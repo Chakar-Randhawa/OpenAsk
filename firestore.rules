@@ -1,0 +1,263 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == "aplphapower@gmail.com"
+      );
+    }
+
+    // Users public profile
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId) && isValidId(userId) &&
+        incoming().keys().hasAll(['uid', 'displayName', 'username']) &&
+        incoming().uid == userId &&
+        incoming().displayName is string && incoming().displayName.size() <= 100 &&
+        incoming().username is string && incoming().username.size() <= 50;
+      allow update: if (
+        isOwner(userId) &&
+        !incoming().diff(existing()).affectedKeys().hasAny(['reputation', 'isActive', 'uid', 'createdAt'])
+      ) || (
+        isSignedIn() &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['followersCount'])
+      ) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+
+      // Private settings subcollection - strictly private to owner
+      match /private/info {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Connection test probe rule as specified in skill guidelines
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // Categories: Publicly readable, writeable ONLY by admins (zero unauthenticated/arbitrary writes)
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Questions
+    match /questions/{questionId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(questionId) &&
+        incoming().title is string && incoming().title.size() >= 3 && incoming().title.size() <= 300 &&
+        incoming().body is string && incoming().body.size() <= 15000 &&
+        incoming().categoryId is string &&
+        (!incoming().isAnonymous
+          ? incoming().authorUid == request.auth.uid
+          : (!('authorUid' in incoming()) || incoming().authorUid == null) && incoming().authorDisplayName == 'Anonymous'
+        );
+      allow update: if (
+        isSignedIn() && (
+          (resource.data.authorUid == request.auth.uid) ||
+          (exists(/databases/$(database)/documents/questionOwners/$(questionId)) &&
+           get(/databases/$(database)/documents/questionOwners/$(questionId)).data.ownerUid == request.auth.uid) ||
+          // Allow community counter updates (answerCount, viewCount, followerCount, voteCount)
+          incoming().diff(existing()).affectedKeys().hasOnly(['answerCount', 'viewCount', 'followerCount', 'voteCount', 'updatedAt'])
+        )
+      ) || isAdmin();
+      allow delete: if (
+        isSignedIn() && (
+          (resource.data.authorUid == request.auth.uid) ||
+          (exists(/databases/$(database)/documents/questionOwners/$(questionId)) &&
+           get(/databases/$(database)/documents/questionOwners/$(questionId)).data.ownerUid == request.auth.uid)
+        )
+      ) || isAdmin();
+    }
+
+    // Secure Question Owners (private ownership tracking)
+    match /questionOwners/{questionId} {
+      allow read: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(questionId) && incoming().ownerUid == request.auth.uid;
+      allow update, delete: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // Answers
+    match /answers/{answerId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(answerId) &&
+        incoming().body is string && incoming().body.size() >= 2 && incoming().body.size() <= 20000 &&
+        incoming().questionId is string &&
+        (!incoming().isAnonymous
+          ? incoming().authorUid == request.auth.uid
+          : (!('authorUid' in incoming()) || incoming().authorUid == null) && incoming().authorDisplayName == 'Anonymous'
+        );
+      allow update: if (
+        isSignedIn() && (
+          (resource.data.authorUid == request.auth.uid) ||
+          (exists(/databases/$(database)/documents/answerOwners/$(answerId)) &&
+           get(/databases/$(database)/documents/answerOwners/$(answerId)).data.ownerUid == request.auth.uid) ||
+          // Allow engagement counters
+          incoming().diff(existing()).affectedKeys().hasOnly(['voteCount', 'helpfulCount', 'updatedAt'])
+        )
+      ) || isAdmin();
+      allow delete: if (
+        isSignedIn() && (
+          (resource.data.authorUid == request.auth.uid) ||
+          (exists(/databases/$(database)/documents/answerOwners/$(answerId)) &&
+           get(/databases/$(database)/documents/answerOwners/$(answerId)).data.ownerUid == request.auth.uid)
+        )
+      ) || isAdmin();
+    }
+
+    // Secure Answer Owners (private ownership tracking)
+    match /answerOwners/{answerId} {
+      allow read: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(answerId) && incoming().ownerUid == request.auth.uid;
+      allow update, delete: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // Votes - Deterministic ID and validated value (1 or -1)
+    match /votes/{voteId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(voteId) &&
+        incoming().userId == request.auth.uid &&
+        voteId == request.auth.uid + '_' + incoming().answerId &&
+        incoming().value in [1, -1];
+      allow update: if isSignedIn() &&
+        existing().userId == request.auth.uid &&
+        incoming().userId == request.auth.uid &&
+        incoming().value in [1, -1];
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Helpful votes - Deterministic ID
+    match /helpfulVotes/{helpfulId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(helpfulId) &&
+        incoming().userId == request.auth.uid &&
+        helpfulId == request.auth.uid + '_' + incoming().answerId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Comments
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(commentId) &&
+        incoming().body is string && incoming().body.size() >= 1 && incoming().body.size() <= 3000 &&
+        (!incoming().isAnonymous
+          ? incoming().authorUid == request.auth.uid
+          : (!('authorUid' in incoming()) || incoming().authorUid == null) && incoming().authorDisplayName == 'Anonymous'
+        );
+      allow update: if (isSignedIn() && resource.data.authorUid == request.auth.uid) || isAdmin();
+      allow delete: if (isSignedIn() && resource.data.authorUid == request.auth.uid) || isAdmin();
+    }
+
+    // Social Follows - Deterministic ID
+    match /follows/{followId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(followId) &&
+        incoming().followerUid == request.auth.uid &&
+        followId == request.auth.uid + '_' + incoming().targetUid;
+      allow delete: if isSignedIn() && existing().followerUid == request.auth.uid;
+    }
+
+    // Category Follows - Deterministic ID
+    match /categoryFollows/{catFollowId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(catFollowId) &&
+        incoming().userId == request.auth.uid &&
+        catFollowId == request.auth.uid + '_' + incoming().categorySlug;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Question Follows - Deterministic ID
+    match /questionFollows/{qFollowId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(qFollowId) &&
+        incoming().userId == request.auth.uid &&
+        qFollowId == request.auth.uid + '_' + incoming().questionId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Saved Items (Bookmarks) - Deterministic ID
+    match /savedItems/{savedId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(savedId) &&
+        incoming().userId == request.auth.uid &&
+        savedId == request.auth.uid + '_' + incoming().itemId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Notifications - Anti-Spoofing and recipient isolated
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.recipientUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(notificationId) &&
+        incoming().keys().hasAll(['notificationId', 'recipientUid', 'type', 'title', 'body', 'isRead', 'createdAt']) &&
+        incoming().recipientUid != request.auth.uid &&
+        incoming().isRead == false &&
+        incoming().type in ['answer', 'comment', 'helpful', 'vote', 'follow'] &&
+        (!('senderUid' in incoming()) || incoming().senderUid == null || incoming().senderUid == request.auth.uid);
+      allow update: if isSignedIn() && existing().recipientUid == request.auth.uid &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isSignedIn() && (existing().recipientUid == request.auth.uid || isAdmin());
+    }
+
+    // Reports (Mod abuse prevention)
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && isValidId(reportId) &&
+        incoming().reporterUid == request.auth.uid &&
+        incoming().keys().hasAll(['reportId', 'reporterUid', 'targetType', 'targetId', 'reason', 'status', 'createdAt']) &&
+        incoming().status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // Blocks - Deterministic ID
+    match /blocks/{blockId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(blockId) &&
+        incoming().userId == request.auth.uid &&
+        blockId == request.auth.uid + '_' + incoming().blockedUid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Mutes - Deterministic ID
+    match /mutes/{muteId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(muteId) &&
+        incoming().userId == request.auth.uid &&
+        muteId == request.auth.uid + '_' + incoming().mutedUid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Admins
+    match /admins/{adminUid} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

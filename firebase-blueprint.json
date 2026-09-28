@@ -1,0 +1,366 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Public profile of an OpenAsk user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "username": { "type": "string", "maxLength": 50, "pattern": "^[a-zA-Z0-9_]{3,30}$" },
+        "bio": { "type": "string", "maxLength": 500 },
+        "photoUrl": { "type": "string", "maxLength": 2048 },
+        "followersCount": { "type": "number" },
+        "followingCount": { "type": "number" },
+        "questionCount": { "type": "number" },
+        "answerCount": { "type": "number" },
+        "reputation": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "username", "createdAt", "updatedAt"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private sensitive settings and preferences for a user",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email", "maxLength": 255 },
+        "defaultAnonymous": { "type": "boolean" },
+        "emailNotifications": { "type": "boolean" },
+        "pushNotifications": { "type": "boolean" },
+        "themePreference": { "type": "string", "enum": ["system", "light", "dark"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "updatedAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Topic category for questions",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 80 },
+        "slug": { "type": "string", "maxLength": 80, "pattern": "^[a-z0-9-]+$" },
+        "description": { "type": "string", "maxLength": 300 },
+        "icon": { "type": "string", "maxLength": 50 },
+        "followerCount": { "type": "number" },
+        "questionCount": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "slug", "description", "createdAt"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Public question document on OpenAsk",
+      "type": "object",
+      "properties": {
+        "questionId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 5, "maxLength": 250 },
+        "body": { "type": "string", "minLength": 10, "maxLength": 10000 },
+        "categoryId": { "type": "string", "maxLength": 80 },
+        "categoryName": { "type": "string", "maxLength": 80 },
+        "tagIds": { "type": "array" },
+        "isAnonymous": { "type": "boolean" },
+        "authorUid": { "type": "string", "maxLength": 128 },
+        "authorDisplayName": { "type": "string", "maxLength": 100 },
+        "authorUsername": { "type": "string", "maxLength": 50 },
+        "authorPhotoUrl": { "type": "string", "maxLength": 2048 },
+        "answerCount": { "type": "number" },
+        "viewCount": { "type": "number" },
+        "voteCount": { "type": "number" },
+        "followerCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "body", "categoryId", "isAnonymous", "createdAt", "updatedAt"]
+    },
+    "QuestionOwner": {
+      "title": "QuestionOwner",
+      "description": "Secure ownership mapping for anonymous and public questions",
+      "type": "object",
+      "properties": {
+        "questionId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["questionId", "ownerUid", "createdAt"]
+    },
+    "Answer": {
+      "title": "Answer",
+      "description": "Answer to an OpenAsk question",
+      "type": "object",
+      "properties": {
+        "answerId": { "type": "string", "maxLength": 128 },
+        "questionId": { "type": "string", "maxLength": 128 },
+        "body": { "type": "string", "minLength": 5, "maxLength": 15000 },
+        "isAnonymous": { "type": "boolean" },
+        "authorUid": { "type": "string", "maxLength": 128 },
+        "authorDisplayName": { "type": "string", "maxLength": 100 },
+        "authorUsername": { "type": "string", "maxLength": 50 },
+        "authorPhotoUrl": { "type": "string", "maxLength": 2048 },
+        "voteCount": { "type": "number" },
+        "helpfulCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["questionId", "body", "isAnonymous", "createdAt", "updatedAt"]
+    },
+    "AnswerOwner": {
+      "title": "AnswerOwner",
+      "description": "Secure ownership mapping for answers",
+      "type": "object",
+      "properties": {
+        "answerId": { "type": "string", "maxLength": 128 },
+        "questionId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["answerId", "questionId", "ownerUid", "createdAt"]
+    },
+    "Vote": {
+      "title": "Vote",
+      "description": "Deterministic answer vote record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "answerId": { "type": "string", "maxLength": 128 },
+        "questionId": { "type": "string", "maxLength": 128 },
+        "value": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "answerId", "questionId", "value", "createdAt"]
+    },
+    "HelpfulVote": {
+      "title": "HelpfulVote",
+      "description": "Helpful mark on an answer",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "answerId": { "type": "string", "maxLength": 128 },
+        "questionId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "answerId", "questionId", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Discussion comment on a question or answer",
+      "type": "object",
+      "properties": {
+        "targetType": { "type": "string", "enum": ["question", "answer"] },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "body": { "type": "string", "minLength": 2, "maxLength": 2000 },
+        "isAnonymous": { "type": "boolean" },
+        "authorUid": { "type": "string", "maxLength": 128 },
+        "authorDisplayName": { "type": "string", "maxLength": 100 },
+        "authorUsername": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["targetType", "targetId", "body", "isAnonymous", "createdAt"]
+    },
+    "Follow": {
+      "title": "Follow",
+      "description": "Follow relationship between users",
+      "type": "object",
+      "properties": {
+        "followerUid": { "type": "string", "maxLength": 128 },
+        "targetUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerUid", "targetUid", "createdAt"]
+    },
+    "CategoryFollow": {
+      "title": "CategoryFollow",
+      "description": "Category subscription record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "categorySlug": { "type": "string", "maxLength": 80 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "categorySlug", "createdAt"]
+    },
+    "QuestionFollow": {
+      "title": "QuestionFollow",
+      "description": "Question subscription for updates",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "questionId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "questionId", "createdAt"]
+    },
+    "SavedItem": {
+      "title": "SavedItem",
+      "description": "Bookmark record for questions or answers",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "itemType": { "type": "string", "enum": ["question", "answer"] },
+        "itemId": { "type": "string", "maxLength": 128 },
+        "questionId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 250 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "itemType", "itemId", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app notification message",
+      "type": "object",
+      "properties": {
+        "recipientUid": { "type": "string", "maxLength": 128 },
+        "senderUid": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["answer", "comment", "helpful", "vote", "follow", "system"] },
+        "title": { "type": "string", "maxLength": 150 },
+        "body": { "type": "string", "maxLength": 300 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "maxLength": 50 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipientUid", "type", "title", "body", "isRead", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Abuse or guideline violation report",
+      "type": "object",
+      "properties": {
+        "reporterUid": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "enum": ["question", "answer", "user", "comment"] },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "reason": { "type": "string", "maxLength": 100 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "dismissed", "actioned"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reporterUid", "targetType", "targetId", "reason", "status", "createdAt"]
+    },
+    "Block": {
+      "title": "Block",
+      "description": "User block record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "blockedUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "blockedUid", "createdAt"]
+    },
+    "Mute": {
+      "title": "Mute",
+      "description": "User mute record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "mutedUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "mutedUid", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Admin authorization entry",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["admin", "superadmin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["role", "createdAt"]
+    },
+    "TestConnection": {
+      "title": "TestConnection",
+      "description": "Probe document for connectivity verification",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/test/{testId}": {
+      "schema": { "$ref": "#/entities/TestConnection" },
+      "description": "Read-only test probe collection to verify Firestore backend connectivity"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Public user profile"
+    },
+    "/users/{userId}/private/info": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Private user preferences and email"
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Knowledge topics and categories"
+    },
+    "/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Public community questions"
+    },
+    "/questionOwners/{questionId}": {
+      "schema": { "$ref": "#/entities/QuestionOwner" },
+      "description": "Secure ownership records for questions"
+    },
+    "/answers/{answerId}": {
+      "schema": { "$ref": "#/entities/Answer" },
+      "description": "Community answers to questions"
+    },
+    "/answerOwners/{answerId}": {
+      "schema": { "$ref": "#/entities/AnswerOwner" },
+      "description": "Secure ownership records for answers"
+    },
+    "/votes/{voteId}": {
+      "schema": { "$ref": "#/entities/Vote" },
+      "description": "Answer votes"
+    },
+    "/helpfulVotes/{helpfulId}": {
+      "schema": { "$ref": "#/entities/HelpfulVote" },
+      "description": "Helpful markings for answers"
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Discussion comments"
+    },
+    "/follows/{followId}": {
+      "schema": { "$ref": "#/entities/Follow" },
+      "description": "Social follow relationships"
+    },
+    "/categoryFollows/{catFollowId}": {
+      "schema": { "$ref": "#/entities/CategoryFollow" },
+      "description": "Category subscription tracking"
+    },
+    "/questionFollows/{qFollowId}": {
+      "schema": { "$ref": "#/entities/QuestionFollow" },
+      "description": "Question subscription tracking"
+    },
+    "/savedItems/{savedId}": {
+      "schema": { "$ref": "#/entities/SavedItem" },
+      "description": "Saved and bookmarked questions and answers"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User notifications"
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "User moderation reports"
+    },
+    "/blocks/{blockId}": {
+      "schema": { "$ref": "#/entities/Block" },
+      "description": "Blocked user entries"
+    },
+    "/mutes/{muteId}": {
+      "schema": { "$ref": "#/entities/Mute" },
+      "description": "Muted user entries"
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Platform administrators"
+    }
+  }
+}
