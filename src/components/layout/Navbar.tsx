@@ -104,10 +104,10 @@ export const Navbar: React.FC<NavbarProps> = () => {
             <Search className="w-4 h-4 absolute left-3 text-neutral-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search OpenAsk..."
+              placeholder="Search topics, questions, @username..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-40 md:w-56 lg:w-64 pl-9 pr-3 py-1.5 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 rounded-lg border border-transparent focus:border-neutral-300 dark:focus:border-neutral-700 focus:bg-white dark:focus:bg-neutral-900 focus:outline-none transition-all"
+              className="w-44 md:w-60 lg:w-72 pl-9 pr-3 py-1.5 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 rounded-lg border border-transparent focus:border-neutral-300 dark:focus:border-neutral-700 focus:bg-white dark:focus:bg-neutral-900 focus:outline-none transition-all"
             />
           </form>
 

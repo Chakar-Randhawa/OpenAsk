@@ -15,6 +15,8 @@ import { useAuth } from '../../core/context/AuthContext';
 import { questionService } from '../../core/services/questionService';
 import { ReportModal } from '../dialogs/ReportModal';
 import { ShareModal } from '../dialogs/ShareModal';
+import { ReputationBadge } from '../user/ReputationBadge';
+import { ReadTimeBadge } from '../ui/ReadTimeBadge';
 
 interface QuestionCardProps {
   question: Question;
@@ -90,18 +92,26 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 <EyeOff className="w-3 h-3" /> Anonymous
               </span>
             ) : question.authorUsername ? (
-              <Link
-                to={`/user/${question.authorUsername}`}
-                className="hover:underline text-neutral-600 dark:text-neutral-400 truncate max-w-[120px]"
-              >
-                @{question.authorUsername}
-              </Link>
+              <div className="flex items-center gap-1.5 truncate">
+                <Link
+                  to={`/user/${question.authorUsername}`}
+                  className="hover:underline text-neutral-600 dark:text-neutral-400 truncate max-w-[120px]"
+                >
+                  @{question.authorUsername}
+                </Link>
+                <ReputationBadge userId={question.authorUid} size="xs" />
+              </div>
             ) : (
-              <span className="text-neutral-500">{question.authorDisplayName || 'Member'}</span>
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="text-neutral-500">{question.authorDisplayName || 'Member'}</span>
+                <ReputationBadge userId={question.authorUid} size="xs" />
+              </div>
             )}
 
             <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
             <span>{timeAgo(question.createdAt)}</span>
+            <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+            <ReadTimeBadge content={`${question.title} ${question.body}`} />
           </div>
 
           {/* Action Menu Trigger */}
@@ -211,11 +221,20 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
             <button
               onClick={() => setShareModalOpen(true)}
-              className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
               title="Share question"
               aria-label="Share"
             >
               <Share2 className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => setReportModalOpen(true)}
+              className="p-1.5 rounded-md text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+              title="Report question"
+              aria-label="Report question"
+            >
+              <Flag className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -235,6 +254,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         onClose={() => setShareModalOpen(false)}
         title={question.title}
         url={`${window.location.origin}/question/${question.questionId}`}
+        targetType="question"
       />
     </>
   );

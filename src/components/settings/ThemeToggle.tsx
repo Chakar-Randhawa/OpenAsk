@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Monitor, Check } from 'lucide-react';
 import { useTheme, Theme } from '../../core/context/ThemeContext';
 
@@ -14,9 +14,36 @@ export const ThemeToggle: React.FC<ThemeSettingsToggleProps> = ({
   variant = 'cards'
 }) => {
   const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click or Escape key
+  useEffect(() => {
+    if (!dropdownOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [dropdownOpen]);
 
   const handleSelect = (newTheme: Theme) => {
     setTheme(newTheme);
+    setDropdownOpen(false);
     onThemeChange?.(newTheme);
   };
 
@@ -29,27 +56,96 @@ export const ThemeToggle: React.FC<ThemeSettingsToggleProps> = ({
     {
       id: 'light',
       label: 'Light Mode',
-      description: 'Bright and clean aesthetic with high contrast',
+      description: 'Bright, crisp visual aesthetic with high contrast',
       icon: Sun
     },
     {
       id: 'dark',
       label: 'Dark Mode',
-      description: 'Subtle neutral dark palette designed for low-light focus',
+      description: 'Neutral dark palette designed for low-light focus',
       icon: Moon
     },
     {
       id: 'system',
       label: 'System Preference',
-      description: `Adapts dynamically to operating system settings (currently ${systemTheme})`,
+      description: `Synchronizes dynamically with device OS settings (currently ${systemTheme})`,
       icon: Monitor
     }
   ];
 
+  // 1. DROPDOWN VARIANT
+  if (variant === 'dropdown') {
+    const ActiveIcon = theme === 'dark' ? Moon : theme === 'light' ? Sun : Monitor;
+    const activeLabel = options.find((o) => o.id === theme)?.label || 'Theme';
+
+    return (
+      <div className={`relative inline-block ${className}`} ref={dropdownRef}>
+        <button
+          type="button"
+          onClick={() => setDropdownOpen(!dropdownOpen)}
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800/60 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 dark:focus-visible:ring-white"
+          aria-haspopup="menu"
+          aria-expanded={dropdownOpen}
+          aria-label={`Theme selector: currently ${activeLabel} (resolved as ${resolvedTheme})`}
+        >
+          <ActiveIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+          <span>{activeLabel}</span>
+        </button>
+
+        {dropdownOpen && (
+          <div
+            className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-neutral-900 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-800 py-1.5 text-xs z-50 animate-in fade-in zoom-in-95 duration-100"
+            role="menu"
+            aria-orientation="vertical"
+          >
+            <div className="px-3 py-1 border-b border-neutral-100 dark:border-neutral-800 mb-1">
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-neutral-400 dark:text-neutral-500">
+                Appearance
+              </span>
+            </div>
+
+            {options.map((opt) => {
+              const Icon = opt.icon;
+              const isSelected = theme === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={isSelected}
+                  onClick={() => handleSelect(opt.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-left cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'bg-neutral-100/90 dark:bg-neutral-800 text-neutral-950 dark:text-white font-medium'
+                      : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Icon className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                    <span>
+                      {opt.label}
+                      {opt.id === 'system' && (
+                        <span className="ml-1 text-[10px] text-neutral-400 font-normal">
+                          ({systemTheme})
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-neutral-950 dark:text-white stroke-[2.5]" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 2. SEGMENTED BUTTONS VARIANT
   if (variant === 'buttons') {
     return (
       <div
-        className={`grid grid-cols-3 gap-2 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl ${className}`}
+        className={`grid grid-cols-3 gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl ${className}`}
         role="radiogroup"
         aria-label="Color theme selection"
       >
@@ -78,7 +174,7 @@ export const ThemeToggle: React.FC<ThemeSettingsToggleProps> = ({
     );
   }
 
-  // Default 'cards' presentation for Settings Page
+  // 3. DEFAULT 'CARDS' VARIANT (For Settings Page)
   return (
     <div
       className={`grid grid-cols-1 sm:grid-cols-3 gap-3.5 ${className}`}

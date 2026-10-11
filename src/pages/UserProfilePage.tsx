@@ -29,6 +29,9 @@ import { useAuth } from '../core/context/AuthContext';
 import { QuestionCard } from '../components/question/QuestionCard';
 import { ShareModal } from '../components/dialogs/ShareModal';
 import { ReportModal } from '../components/dialogs/ReportModal';
+import { ReputationModal } from '../components/dialogs/ReputationModal';
+import { UserProfileSkeleton } from '../components/ui/Skeleton';
+import { ReputationBadge, ActivityBadgeList } from '../components/user';
 
 export const UserProfilePage: React.FC = () => {
   const { username } = useParams<{ username: string }>();
@@ -56,6 +59,7 @@ export const UserProfilePage: React.FC = () => {
   // Share & Report
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reputationModalOpen, setReputationModalOpen] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -197,12 +201,7 @@ export const UserProfilePage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto space-y-4">
-        <div className="h-44 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl animate-pulse" />
-        <div className="h-40 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl animate-pulse" />
-      </div>
-    );
+    return <UserProfileSkeleton />;
   }
 
   if (!profile) {
@@ -241,10 +240,23 @@ export const UserProfilePage: React.FC = () => {
             )}
 
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-xl sm:text-2xl font-bold text-neutral-950 dark:text-white font-display">
                   {profile.displayName}
                 </h1>
+                <ReputationBadge
+                  reputation={derivedReputation}
+                  size="sm"
+                  variant="pill"
+                  onClick={() => setReputationModalOpen(true)}
+                  className="cursor-pointer"
+                />
+                <ActivityBadgeList
+                  profile={profile}
+                  questions={questions}
+                  answers={answers}
+                  variant="pills-only"
+                />
                 {isBlocked && (
                   <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
                     Blocked
@@ -259,15 +271,18 @@ export const UserProfilePage: React.FC = () => {
               <p className="text-xs text-neutral-500">@{profile.username}</p>
               
               <div className="flex items-center gap-3 text-xs text-neutral-400 mt-2">
-                <span
-                  className="flex items-center gap-1 cursor-help"
-                  title={`Derived Reputation Formula: 10 + (${profile.answerCount || 0} answers × 5) + (${profile.questionCount || 0} questions × 2)`}
+                <button
+                  type="button"
+                  onClick={() => setReputationModalOpen(true)}
+                  className="flex items-center gap-1.5 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer"
+                  title="Click to view full reputation tiers and rules"
                 >
-                  <Award className="w-3.5 h-3.5 text-neutral-500" />
+                  <Award className="w-3.5 h-3.5 text-amber-500" />
                   <strong className="text-neutral-900 dark:text-white font-semibold tabular-nums">
                     {derivedReputation}
                   </strong> reputation
-                </span>
+                  <span className="text-[10px] text-neutral-400 underline font-normal">breakdown</span>
+                </button>
                 <span aria-hidden="true">·</span>
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-neutral-400" />
@@ -392,6 +407,16 @@ export const UserProfilePage: React.FC = () => {
           >
             <strong className="text-neutral-900 dark:text-white tabular-nums">{profile.followingCount}</strong> following
           </button>
+        </div>
+
+        {/* Activity Badges Showcase */}
+        <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800">
+          <ActivityBadgeList
+            profile={profile}
+            questions={questions}
+            answers={answers}
+            variant="showcase"
+          />
         </div>
       </div>
 
@@ -550,8 +575,11 @@ export const UserProfilePage: React.FC = () => {
                         {f.displayName[0]?.toUpperCase()}
                       </div>
                     )}
-                    <div className="truncate">
-                      <p className="text-xs font-semibold text-neutral-950 dark:text-white truncate">{f.displayName}</p>
+                    <div className="truncate flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <p className="text-xs font-semibold text-neutral-950 dark:text-white truncate">{f.displayName}</p>
+                        <ReputationBadge reputation={f.reputation} answerCount={f.answerCount} questionCount={f.questionCount} size="xs" />
+                      </div>
                       <p className="text-[11px] text-neutral-500 truncate">@{f.username}</p>
                     </div>
                   </Link>
@@ -592,8 +620,11 @@ export const UserProfilePage: React.FC = () => {
                         {f.displayName[0]?.toUpperCase()}
                       </div>
                     )}
-                    <div className="truncate">
-                      <p className="text-xs font-semibold text-neutral-950 dark:text-white truncate">{f.displayName}</p>
+                    <div className="truncate flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <p className="text-xs font-semibold text-neutral-950 dark:text-white truncate">{f.displayName}</p>
+                        <ReputationBadge reputation={f.reputation} answerCount={f.answerCount} questionCount={f.questionCount} size="xs" />
+                      </div>
                       <p className="text-[11px] text-neutral-500 truncate">@{f.username}</p>
                     </div>
                   </Link>
@@ -610,6 +641,7 @@ export const UserProfilePage: React.FC = () => {
         onClose={() => setShareModalOpen(false)}
         title={`Profile: ${profile.displayName}`}
         url={window.location.href}
+        targetType="profile"
       />
 
       {/* Report Modal */}
@@ -618,6 +650,13 @@ export const UserProfilePage: React.FC = () => {
         onClose={() => setReportModalOpen(false)}
         targetType="user"
         targetId={profile.uid}
+      />
+
+      {/* Reputation Breakdown & Badges Modal */}
+      <ReputationModal
+        isOpen={reputationModalOpen}
+        onClose={() => setReputationModalOpen(false)}
+        userReputation={derivedReputation}
       />
 
     </div>

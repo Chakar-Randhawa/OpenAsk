@@ -2,17 +2,27 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { EyeOff, ArrowRight } from 'lucide-react';
 import { Category } from '../../core/models/types';
+import { ContextSidebarSkeleton } from '../ui/Skeleton';
+import { TrendingTopicsWidget } from './TrendingTopicsWidget';
 
 interface ContextSidebarProps {
   categories?: Category[];
+  loading?: boolean;
 }
 
-export const ContextSidebar: React.FC<ContextSidebarProps> = ({ categories = [] }) => {
-  const displayCategories = categories.slice(0, 6);
+export const ContextSidebar: React.FC<ContextSidebarProps> = ({ categories = [], loading = false }) => {
+  if (loading) {
+    return <ContextSidebarSkeleton />;
+  }
+
+  const displayCategories = categories.slice(0, 5);
 
   return (
-    <aside className="w-72 shrink-0 hidden xl:block sticky top-20 self-start space-y-6">
+    <aside className="w-72 shrink-0 hidden xl:block sticky top-20 self-start space-y-5">
       
+      {/* Gemini AI Trending Topics Widget */}
+      <TrendingTopicsWidget maxItems={3} />
+
       {/* Anonymous Posting Assurance Card */}
       <div className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-xs">
         <div className="flex items-center gap-2 mb-2 text-neutral-900 dark:text-neutral-100 font-semibold">
@@ -59,26 +69,26 @@ export const ContextSidebar: React.FC<ContextSidebarProps> = ({ categories = [] 
               </div>
             ))}
           </div>
-          <div className="mt-3 pt-2.5 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800/80">
             <Link
               to="/categories"
-              className="text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 font-medium inline-flex items-center gap-1"
+              className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white flex items-center justify-between text-[11px] font-medium"
             >
-              Browse all 50 categories <ArrowRight className="w-3 h-3" />
+              <span>View all 50 topics</span>
+              <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
       )}
 
-      {/* Mini Editorial Footer */}
-      <div className="px-2 text-[11px] text-neutral-400 dark:text-neutral-500 space-x-2">
-        <Link to="/guidelines" className="hover:underline">Rules</Link>
-        <span>·</span>
-        <Link to="/terms" className="hover:underline">Terms</Link>
-        <span>·</span>
-        <Link to="/privacy" className="hover:underline">Privacy</Link>
-        <span>·</span>
-        <span>© {new Date().getFullYear()} OpenAsk</span>
+      {/* Mini Footer / Platform Rules */}
+      <div className="px-1 text-[11px] text-neutral-400 dark:text-neutral-500 space-y-1.5">
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <Link to="/guidelines" className="hover:underline">Community Guidelines</Link>
+          <Link to="/privacy" className="hover:underline">Privacy Policy</Link>
+          <Link to="/terms" className="hover:underline">Terms of Service</Link>
+        </div>
+        <p>© 2026 OpenAsk. Authentic knowledge exchange.</p>
       </div>
 
     </aside>

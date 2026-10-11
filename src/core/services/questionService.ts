@@ -20,6 +20,7 @@ const QUESTIONS_COLLECTION = 'questions';
 const QUESTION_OWNERS_COLLECTION = 'questionOwners';
 const QUESTION_FOLLOWS_COLLECTION = 'questionFollows';
 const SAVED_ITEMS_COLLECTION = 'savedItems';
+const QUESTION_VOTES_COLLECTION = 'questionVotes';
 
 export interface CreateQuestionInput {
   title: string;
@@ -305,6 +306,63 @@ export const questionService = {
       return snap.docs.map(d => d.data() as SavedItem);
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, SAVED_ITEMS_COLLECTION);
+    }
+  },
+
+  async getUserVote(userId: string, questionId: string): Promise<1 | -1 | 0> {
+    if (!userId || !questionId) return 0;
+    try {
+      const voteRef = doc(db, QUESTION_VOTES_COLLECTION, `${userId}_${questionId}`);
+      const snap = await getDoc(voteRef);
+      if (snap.exists()) {
+        const data = snap.data() as { value: 1 | -1 };
+        return data.value;
+      }
+      return 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  async voteQuestion(userId: string, questionId: string, value: 1 | -1): Promise<number> {
+    const voteId = `${userId}_${questionId}`;
+    const voteRef = doc(db, QUESTION_VOTES_COLLECTION, voteId);
+    const qRef = doc(db, QUESTIONS_COLLECTION, questionId);
+
+    try {
+      const existingVoteSnap = await getDoc(voteRef);
+      let delta: number = value;
+
+      if (existingVoteSnap.exists()) {
+        const prevValue = existingVoteSnap.data().value as number;
+        if (prevValue === value) {
+          // Cancel vote
+          await deleteDoc(voteRef);
+          delta = -value;
+        } else {
+          // Flip vote (-1 to 1 or 1 to -1)
+          delta = value * 2;
+          await updateDoc(voteRef, { value, createdAt: new Date().toISOString() });
+        }
+      } else {
+        // Cast new vote
+        await setDoc(voteRef, {
+          id: voteId,
+          userId,
+          questionId,
+          value,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      await updateDoc(qRef, {
+        voteCount: increment(delta),
+        updatedAt: new Date().toISOString()
+      });
+
+      return delta;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${QUESTIONS_COLLECTION}/${questionId}`);
     }
   }
 };

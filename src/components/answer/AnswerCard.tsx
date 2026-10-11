@@ -10,7 +10,8 @@ import {
   Trash2,
   Edit3,
   MessageCircle,
-  EyeOff
+  EyeOff,
+  Sparkles
 } from 'lucide-react';
 import { Answer, Comment } from '../../core/models/types';
 import { useAuth } from '../../core/context/AuthContext';
@@ -19,6 +20,10 @@ import { commentService } from '../../core/services/commentService';
 import { notificationService } from '../../core/services/notificationService';
 import { ReportModal } from '../dialogs/ReportModal';
 import { ShareModal } from '../dialogs/ShareModal';
+import { ReputationBadge } from '../user/ReputationBadge';
+import { RichTextEditor, FormattedContent } from '../editor';
+import { ReadTimeBadge } from '../ui/ReadTimeBadge';
+import { CommentItem } from '../comment/CommentItem';
 
 interface AnswerCardProps {
   answer: Answer;
@@ -49,7 +54,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
   // Modals
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ type: 'answer' | 'comment'; id: string }>({
+    type: 'answer',
+    id: answer.answerId
+  });
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(answer.voteCount <= -3);
 
   useEffect(() => {
     if (currentUser) {
@@ -175,13 +185,45 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
     }
   };
 
+  if (voteCount <= -3 && isCollapsed) {
+    return (
+      <article
+        id={answer.answerId}
+        className="p-3.5 bg-neutral-100/70 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800 rounded-xl flex items-center justify-between gap-3 text-xs scroll-mt-20"
+      >
+        <div className="flex items-center gap-2 text-neutral-500">
+          <EyeOff className="w-4 h-4 text-neutral-400 shrink-0" />
+          <span>
+            Irrelevant content collapsed due to low community score ({voteCount})
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(false)}
+          className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer shrink-0"
+        >
+          Show answer
+        </button>
+      </article>
+    );
+  }
+
   return (
     <>
-      <article className="p-4 sm:p-5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-3">
+      <article id={answer.answerId} className={`p-4 sm:p-5 bg-white dark:bg-neutral-900 border rounded-xl space-y-3 scroll-mt-20 ${
+        voteCount >= 5
+          ? 'border-emerald-200 dark:border-emerald-800/80 shadow-xs'
+          : 'border-neutral-200 dark:border-neutral-800'
+      }`}>
         
         {/* Header: Author & Date */}
         <div className="flex items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {voteCount >= 5 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+                <Sparkles className="w-2.5 h-2.5" /> High Quality
+              </span>
+            )}
             {answer.isAnonymous ? (
               <div className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400 font-medium">
                 <div className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center">
@@ -203,17 +245,23 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
                   </div>
                 )}
                 {answer.authorUsername ? (
-                  <Link
-                    to={`/user/${answer.authorUsername}`}
-                    className="font-medium text-neutral-900 dark:text-neutral-200 hover:underline"
-                  >
-                    {answer.authorDisplayName}
-                    <span className="text-neutral-400 font-normal ml-1">@{answer.authorUsername}</span>
-                  </Link>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Link
+                      to={`/user/${answer.authorUsername}`}
+                      className="font-medium text-neutral-900 dark:text-neutral-200 hover:underline"
+                    >
+                      {answer.authorDisplayName}
+                      <span className="text-neutral-400 font-normal ml-1">@{answer.authorUsername}</span>
+                    </Link>
+                    <ReputationBadge userId={answer.authorUid} size="xs" />
+                  </div>
                 ) : (
-                  <span className="font-medium text-neutral-900 dark:text-neutral-200">
-                    {answer.authorDisplayName || 'Member'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium text-neutral-900 dark:text-neutral-200">
+                      {answer.authorDisplayName || 'Member'}
+                    </span>
+                    <ReputationBadge userId={answer.authorUid} size="xs" />
+                  </div>
                 )}
               </div>
             )}
@@ -223,6 +271,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
             {isEdited && (
               <span className="text-neutral-400 text-[11px] italic">(edited)</span>
             )}
+            <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+            <ReadTimeBadge content={currentBody} />
           </div>
 
           {/* Action Overflow */}
@@ -258,7 +308,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
                   <Share2 className="w-3.5 h-3.5" /> Share
                 </button>
                 <button
-                  onClick={() => setReportModalOpen(true)}
+                  onClick={() => {
+                    setReportTarget({ type: 'answer', id: answer.answerId });
+                    setReportModalOpen(true);
+                  }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-left text-neutral-700 dark:text-neutral-300 cursor-pointer"
                 >
                   <Flag className="w-3.5 h-3.5" /> Report
@@ -279,11 +332,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
         {/* Answer Text or Inline Editor */}
         {isEditing ? (
           <div className="space-y-2 pt-1">
-            <textarea
-              rows={4}
+            <RichTextEditor
               value={editBody}
-              onChange={(e) => setEditBody(e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-neutral-400 text-neutral-900 dark:text-white"
+              onChange={setEditBody}
+              minRows={4}
+              maxLength={10000}
+              placeholder="Edit your answer (supports bold, italics, code blocks, lists)..."
             />
             <div className="flex items-center justify-end gap-2 text-xs">
               <button
@@ -304,9 +358,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
             </div>
           </div>
         ) : (
-          <div className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed whitespace-pre-line">
-            {currentBody}
-          </div>
+          <FormattedContent
+            content={currentBody}
+            className="text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed"
+          />
         )}
 
         {/* Action Controls: Votes, Helpful, Comments */}
@@ -362,10 +417,32 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
             {/* Comments Toggle */}
             <button
               onClick={handleToggleComments}
-              className="flex items-center gap-1.5 text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors"
+              className="flex items-center gap-1.5 text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer"
             >
               <MessageCircle className="w-4 h-4" />
               <span>{comments.length > 0 ? comments.length : 'Comment'}</span>
+            </button>
+
+            {/* Direct Share & Report for Answer */}
+            <button
+              onClick={() => setShareModalOpen(true)}
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+              title="Share answer"
+              aria-label="Share answer"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => {
+                setReportTarget({ type: 'answer', id: answer.answerId });
+                setReportModalOpen(true);
+              }}
+              className="p-1 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
+              title="Report answer"
+              aria-label="Report answer"
+            >
+              <Flag className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -377,17 +454,33 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
             {comments.map((cm) => (
               <div key={cm.commentId} className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 text-xs">
                 <div className="flex items-center justify-between text-neutral-400 mb-1">
-                  <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                    {cm.isAnonymous ? 'Anonymous' : cm.authorDisplayName}
-                  </span>
+                  <div className="flex items-center gap-1.5 font-semibold text-neutral-700 dark:text-neutral-300">
+                    <span>{cm.isAnonymous ? 'Anonymous' : cm.authorDisplayName}</span>
+                    {!cm.isAnonymous && cm.authorUid && (
+                      <ReputationBadge userId={cm.authorUid} size="xs" />
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     <span>{new Date(cm.createdAt).toLocaleDateString()}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReportTarget({ type: 'comment', id: cm.commentId });
+                        setReportModalOpen(true);
+                      }}
+                      className="text-neutral-400 hover:text-red-600 dark:hover:text-red-400 cursor-pointer p-0.5 transition-colors"
+                      title="Report comment"
+                      aria-label="Report comment"
+                    >
+                      <Flag className="w-3 h-3" />
+                    </button>
                     {currentUser && cm.authorUid === currentUser.uid && (
                       <button
                         type="button"
                         onClick={() => handleDeleteComment(cm.commentId)}
                         className="text-neutral-400 hover:text-red-600 cursor-pointer p-0.5"
                         title="Delete comment"
+                        aria-label="Delete comment"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -439,15 +532,16 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
       <ReportModal
         isOpen={reportModalOpen}
         onClose={() => setReportModalOpen(false)}
-        targetType="answer"
-        targetId={answer.answerId}
+        targetType={reportTarget.type}
+        targetId={reportTarget.id}
       />
 
       <ShareModal
         isOpen={shareModalOpen}
         onClose={() => setShareModalOpen(false)}
-        title="OpenAsk Answer"
+        title={`Answer by ${answer.isAnonymous ? 'Anonymous' : (answer.authorDisplayName || 'Community Member')} on OpenAsk`}
         url={`${window.location.origin}/question/${answer.questionId}#${answer.answerId}`}
+        targetType="answer"
       />
     </>
   );

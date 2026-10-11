@@ -17,6 +17,7 @@ import { useAuth } from '../core/context/AuthContext';
 import { QuestionCard } from '../components/question/QuestionCard';
 import { ContextSidebar } from '../components/layout/ContextSidebar';
 import { ConfirmModal } from '../components/dialogs/ConfirmModal';
+import { QuestionListSkeleton } from '../components/ui/Skeleton';
 
 type FeedTab = 'forYou' | 'trending' | 'new' | 'following';
 
@@ -25,6 +26,7 @@ export const HomePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<FeedTab>('forYou');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [followedUsers, setFollowedUsers] = useState<string[]>([]);
@@ -56,9 +58,15 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     loadFeed(activeTab);
-    categoryService.getAllCategories().then(setCategories).catch(err => {
-      console.warn('Could not load categories:', err);
-    });
+    setCategoriesLoading(true);
+    categoryService.getAllCategories()
+      .then(setCategories)
+      .catch(err => {
+        console.warn('Could not load categories:', err);
+      })
+      .finally(() => {
+        setCategoriesLoading(false);
+      });
   }, [activeTab, currentUser]);
 
   const handleRefresh = () => {
@@ -170,18 +178,7 @@ export const HomePage: React.FC = () => {
 
         {/* Feed List */}
         {loading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="p-5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-3 animate-pulse"
-              >
-                <div className="h-3 w-1/4 bg-neutral-200 dark:bg-neutral-800 rounded" />
-                <div className="h-5 w-3/4 bg-neutral-200 dark:bg-neutral-800 rounded" />
-                <div className="h-4 w-full bg-neutral-200 dark:bg-neutral-800 rounded" />
-              </div>
-            ))}
-          </div>
+          <QuestionListSkeleton count={4} />
         ) : questions.length === 0 ? (
           <div className="p-12 text-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl space-y-3">
             <div className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mx-auto text-neutral-500">
@@ -222,7 +219,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* Contextual Desktop Sidebar */}
-      <ContextSidebar categories={categories} />
+      <ContextSidebar categories={categories} loading={categoriesLoading} />
 
       <ConfirmModal
         isOpen={Boolean(questionToDelete)}

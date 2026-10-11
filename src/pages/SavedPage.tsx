@@ -4,6 +4,7 @@ import { Bookmark, ArrowRight } from 'lucide-react';
 import { SavedItem } from '../core/models/types';
 import { questionService } from '../core/services/questionService';
 import { useAuth } from '../core/context/AuthContext';
+import { QuestionListSkeleton } from '../components/ui/Skeleton';
 
 export const SavedPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -57,11 +58,7 @@ export const SavedPage: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl h-16 animate-pulse" />
-          ))}
-        </div>
+        <QuestionListSkeleton count={3} />
       ) : items.length === 0 ? (
         <div className="p-12 text-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl space-y-3">
           <Bookmark className="w-8 h-8 text-neutral-400 mx-auto" />

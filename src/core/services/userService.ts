@@ -20,30 +20,59 @@ const FOLLOWS_COLLECTION = 'follows';
 const BLOCKS_COLLECTION = 'blocks';
 const MUTES_COLLECTION = 'mutes';
 
+const userProfileCache = new Map<string, UserProfile>();
+
 export const userService = {
+  clearCache() {
+    userProfileCache.clear();
+  },
+
   async getUserByUsername(username: string): Promise<UserProfile | null> {
     try {
+      const cleanUsername = username.toLowerCase().trim();
+      for (const cached of userProfileCache.values()) {
+        if (cached.username.toLowerCase() === cleanUsername) {
+          return cached;
+        }
+      }
       const q = query(
         collection(db, USERS_COLLECTION),
-        where('username', '==', username.toLowerCase().trim()),
+        where('username', '==', cleanUsername),
         limit(1)
       );
       const snap = await getDocs(q);
       if (snap.empty) return null;
-      return snap.docs[0].data() as UserProfile;
+      const profile = snap.docs[0].data() as UserProfile;
+      userProfileCache.set(profile.uid, profile);
+      return profile;
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, USERS_COLLECTION);
+      return null;
     }
   },
 
   async getUserByUid(uid: string): Promise<UserProfile | null> {
+    if (!uid) return null;
+    if (userProfileCache.has(uid)) {
+      return userProfileCache.get(uid)!;
+    }
     try {
       const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
       if (!snap.exists()) return null;
-      return snap.data() as UserProfile;
+      const profile = snap.data() as UserProfile;
+      userProfileCache.set(uid, profile);
+      return profile;
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, `${USERS_COLLECTION}/${uid}`);
+      return null;
     }
+  },
+
+  async getUserReputation(uid: string): Promise<number> {
+    if (!uid) return 10;
+    const user = await this.getUserByUid(uid);
+    if (!user) return 10;
+    return Math.max(10, (user.reputation || 10) + (user.answerCount || 0) * 5 + (user.questionCount || 0) * 2);
   },
 
   async isFollowingUser(followerUid: string, targetUid: string): Promise<boolean> {

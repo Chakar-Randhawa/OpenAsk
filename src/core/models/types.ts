@@ -101,6 +101,23 @@ export interface HelpfulVote {
   createdAt: string;
 }
 
+export interface QuestionVote {
+  id: string; // `${userId}_${questionId}`
+  userId: string;
+  questionId: string;
+  value: 1 | -1;
+  createdAt: string;
+}
+
+export interface CommentVote {
+  id: string; // `${userId}_${commentId}`
+  userId: string;
+  commentId: string;
+  targetId: string;
+  value: 1 | -1;
+  createdAt: string;
+}
+
 export interface Comment {
   commentId: string;
   targetType: 'question' | 'answer';
@@ -110,6 +127,7 @@ export interface Comment {
   authorUid?: string;
   authorDisplayName?: string;
   authorUsername?: string;
+  voteCount?: number;
   createdAt: string;
 }
 

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Search, Compass, Layers, ArrowRight } from 'lucide-react';
 import { Category } from '../core/models/types';
 import { categoryService } from '../core/services/categoryService';
+import { CategoryListSkeleton } from '../components/ui/Skeleton';
+import { DiscussionMetricsChart } from '../components/analytics/DiscussionMetricsChart';
 
 export const DiscoverPage: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -56,18 +58,11 @@ export const DiscoverPage: React.FC = () => {
         </div>
       </div>
 
+      {/* 30-Day Trending Topics and Discussion Volume Metrics Visualization */}
+      <DiscussionMetricsChart />
+
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div
-              key={i}
-              className="p-5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-3 animate-pulse"
-            >
-              <div className="h-4 w-1/3 bg-neutral-200 dark:bg-neutral-800 rounded" />
-              <div className="h-3 w-3/4 bg-neutral-200 dark:bg-neutral-800 rounded" />
-            </div>
-          ))}
-        </div>
+        <CategoryListSkeleton count={6} />
       ) : filtered.length === 0 ? (
         <div className="p-12 text-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl">
           <Layers className="w-8 h-8 text-neutral-400 mx-auto mb-2" />

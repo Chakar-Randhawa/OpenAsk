@@ -6,6 +6,7 @@ import { categoryService } from '../core/services/categoryService';
 import { questionService } from '../core/services/questionService';
 import { useAuth } from '../core/context/AuthContext';
 import { QuestionCard } from '../components/question/QuestionCard';
+import { Skeleton, QuestionListSkeleton } from '../components/ui/Skeleton';
 
 export const CategoryPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -55,9 +56,17 @@ export const CategoryPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="h-24 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl animate-pulse" />
-        <div className="h-40 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl animate-pulse" />
+      <div className="space-y-6">
+        <div className="p-6 sm:p-8 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl space-y-4">
+          <div className="flex items-center gap-3">
+            <Skeleton variant="rounded" className="w-12 h-12 rounded-xl" />
+            <div className="space-y-1.5 flex-1">
+              <Skeleton className="h-6 w-48 rounded" />
+              <Skeleton className="h-3.5 w-72 rounded" />
+            </div>
+          </div>
+        </div>
+        <QuestionListSkeleton count={4} />
       </div>
     );
   }

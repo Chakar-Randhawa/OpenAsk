@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { EyeOff, Globe, HelpCircle, ArrowLeft } from 'lucide-react';
+import { EyeOff, Globe, HelpCircle, ArrowLeft, Save, Trash2, Check, RefreshCw } from 'lucide-react';
 import { Category } from '../core/models/types';
 import { categoryService } from '../core/services/categoryService';
 import { questionService } from '../core/services/questionService';
 import { useAuth } from '../core/context/AuthContext';
+import { RichTextEditor } from '../components/editor/RichTextEditor';
+import { ReadTimeBadge } from '../components/ui/ReadTimeBadge';
+import { draftsManager } from '../core/utils/drafts';
 
 export const AskPage: React.FC = () => {
   const { currentUser, userProfile, userPrivate } = useAuth();
@@ -19,6 +22,64 @@ export const AskPage: React.FC = () => {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Draft state
+  const [draftRestored, setDraftRestored] = useState<boolean>(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+
+  // Restore draft on initial mount
+  useEffect(() => {
+    const draft = draftsManager.loadQuestionDraft();
+    if (draft) {
+      if (draft.title) setTitle(draft.title);
+      if (draft.body) setBody(draft.body);
+      if (draft.selectedCategorySlug) setSelectedCategorySlug(draft.selectedCategorySlug);
+      if (draft.tagsInput) setTagsInput(draft.tagsInput);
+      if (draft.isAnonymous !== undefined) setIsAnonymous(draft.isAnonymous);
+      setDraftRestored(true);
+      setDraftSavedAt(new Date(draft.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    }
+  }, []);
+
+  // Auto-save draft on content changes
+  useEffect(() => {
+    if (title.trim() || body.trim()) {
+      draftsManager.saveQuestionDraft({
+        title,
+        body,
+        selectedCategorySlug,
+        tagsInput,
+        isAnonymous,
+      });
+      setDraftSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    }
+  }, [title, body, selectedCategorySlug, tagsInput, isAnonymous]);
+
+  // Ensure draft is saved if user abruptly navigates away or refreshes
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (title.trim() || body.trim()) {
+        draftsManager.saveQuestionDraft({
+          title,
+          body,
+          selectedCategorySlug,
+          tagsInput,
+          isAnonymous,
+        });
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [title, body, selectedCategorySlug, tagsInput, isAnonymous]);
+
+  const handleDiscardDraft = () => {
+    draftsManager.clearQuestionDraft();
+    setTitle('');
+    setBody('');
+    setTagsInput('');
+    setDraftRestored(false);
+    setDraftSavedAt(null);
+  };
 
   useEffect(() => {
     categoryService.getAllCategories()
@@ -86,6 +147,9 @@ export const AskPage: React.FC = () => {
         authorPhotoUrl: userProfile?.photoUrl
       });
 
+      // Clear auto-saved draft on publish success
+      draftsManager.clearQuestionDraft();
+
       navigate(`/question/${qId}`);
     } catch (err) {
       console.error('Error creating question:', err);
@@ -150,6 +214,33 @@ export const AskPage: React.FC = () => {
         </div>
       )}
 
+      {draftRestored && (
+        <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-xl text-xs flex items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+            <RefreshCw className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+            <span>
+              Restored unsaved draft from your previous session{draftSavedAt ? ` (${draftSavedAt})` : ''}.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="text-red-600 dark:text-red-400 hover:underline font-medium cursor-pointer text-xs"
+            >
+              Discard draft
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraftRestored(false)}
+              className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 text-xs cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Question Form */}
       <form onSubmit={handleSubmit} className="space-y-5 bg-white dark:bg-neutral-900 p-6 sm:p-8 rounded-2xl border border-neutral-200 dark:border-neutral-800">
         
@@ -193,18 +284,22 @@ export const AskPage: React.FC = () => {
 
         {/* Body Details */}
         <div>
-          <label className="block text-xs font-semibold text-neutral-900 dark:text-white mb-1.5">
-            Detailed Context & Background <span className="text-red-500">*</span>
-          </label>
-          <textarea
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-xs font-semibold text-neutral-900 dark:text-white">
+              Detailed Context & Background <span className="text-red-500">*</span>
+            </label>
+            {(title.trim() || body.trim()) && (
+              <ReadTimeBadge content={`${title} ${body}`} variant="pill" size="xs" />
+            )}
+          </div>
+          <RichTextEditor
+            value={body}
+            onChange={setBody}
+            placeholder="Include relevant background, context, what you have already explored, or specific angles you are interested in (supports bold, italics, code blocks, lists)..."
+            minRows={7}
             required
             minLength={10}
             maxLength={10000}
-            rows={6}
-            placeholder="Include relevant background, context, what you have already explored, or specific angles you are interested in..."
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-neutral-400 text-neutral-900 dark:text-white leading-relaxed"
           />
         </div>
 
@@ -255,21 +350,47 @@ export const AskPage: React.FC = () => {
         </div>
 
         {/* Submit Bar */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="px-4 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="px-6 py-2.5 text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200 rounded-xl transition-colors shadow-xs disabled:opacity-50"
-          >
-            {submitting ? 'Publishing...' : 'Publish Question'}
-          </button>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+            {draftSavedAt ? (
+              <span className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Auto-saved to local storage ({draftSavedAt})</span>
+              </span>
+            ) : (
+              <span>Auto-saves automatically as you type</span>
+            )}
+            {(title.trim() || body.trim()) && (
+              <>
+                <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+                <button
+                  type="button"
+                  onClick={handleDiscardDraft}
+                  className="text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
+                  title="Discard draft"
+                >
+                  Discard
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="px-4 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-950 dark:hover:text-white cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-6 py-2.5 text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200 rounded-xl transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+            >
+              {submitting ? 'Publishing...' : 'Publish Question'}
+            </button>
+          </div>
         </div>
 
       </form>

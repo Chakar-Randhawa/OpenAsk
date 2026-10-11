@@ -5,6 +5,7 @@ import {
   Eye,
   Bookmark,
   Share2,
+  Check,
   Flag,
   Trash2,
   EyeOff,
@@ -20,10 +21,16 @@ import { answerService } from '../core/services/answerService';
 import { commentService } from '../core/services/commentService';
 import { notificationService } from '../core/services/notificationService';
 import { useAuth } from '../core/context/AuthContext';
+import { copyToClipboard } from '../core/utils/clipboard';
 import { AnswerCard } from '../components/answer/AnswerCard';
 import { ReportModal } from '../components/dialogs/ReportModal';
 import { ShareModal } from '../components/dialogs/ShareModal';
 import { ConfirmModal } from '../components/dialogs/ConfirmModal';
+import { QuestionDetailSkeleton } from '../components/ui/Skeleton';
+import { ReputationBadge } from '../components/user/ReputationBadge';
+import { RichTextEditor, FormattedContent } from '../components/editor';
+import { ReadTimeBadge } from '../components/ui/ReadTimeBadge';
+import { draftsManager } from '../core/utils/drafts';
 
 export const QuestionDetailPage: React.FC = () => {
   const { questionId } = useParams<{ questionId: string }>();
@@ -55,14 +62,78 @@ export const QuestionDetailPage: React.FC = () => {
   const [answerBody, setAnswerBody] = useState('');
   const [isAnonymousAnswer, setIsAnonymousAnswer] = useState(false);
   const [submittingAnswer, setSubmittingAnswer] = useState(false);
+  const [answerDraftRestored, setAnswerDraftRestored] = useState(false);
+  const [answerDraftSavedAt, setAnswerDraftSavedAt] = useState<string | null>(null);
+
+  // Restore answer draft for this question
+  useEffect(() => {
+    if (questionId) {
+      const draft = draftsManager.loadAnswerDraft(questionId);
+      if (draft && draft.body) {
+        setAnswerBody(draft.body);
+        if (draft.isAnonymous !== undefined) setIsAnonymousAnswer(draft.isAnonymous);
+        setAnswerDraftRestored(true);
+        setAnswerDraftSavedAt(new Date(draft.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+    }
+  }, [questionId]);
+
+  // Auto-save answer draft on content change
+  useEffect(() => {
+    if (questionId && answerBody.trim()) {
+      draftsManager.saveAnswerDraft(questionId, {
+        body: answerBody,
+        isAnonymous: isAnonymousAnswer,
+      });
+      setAnswerDraftSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    }
+  }, [questionId, answerBody, isAnonymousAnswer]);
+
+  // Save answer draft on beforeunload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (questionId && answerBody.trim()) {
+        draftsManager.saveAnswerDraft(questionId, {
+          body: answerBody,
+          isAnonymous: isAnonymousAnswer,
+        });
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [questionId, answerBody, isAnonymousAnswer]);
+
+  const handleDiscardAnswerDraft = () => {
+    if (questionId) draftsManager.clearAnswerDraft(questionId);
+    setAnswerBody('');
+    setAnswerDraftRestored(false);
+    setAnswerDraftSavedAt(null);
+  };
 
   // Modals
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ type: 'question' | 'comment'; id: string }>({
+    type: 'question',
+    id: questionId || ''
+  });
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingQuestion, setDeletingQuestion] = useState(false);
   const [answerToDelete, setAnswerToDelete] = useState<string | null>(null);
   const [deletingAnswer, setDeletingAnswer] = useState(false);
+  const [copiedDirectUrl, setCopiedDirectUrl] = useState(false);
+
+  const handleCopyDirectUrl = async () => {
+    if (!question) return;
+    const directUrl = `${window.location.origin}/question/${question.questionId}`;
+    const success = await copyToClipboard(directUrl);
+    if (success) {
+      setCopiedDirectUrl(true);
+      setTimeout(() => setCopiedDirectUrl(false), 2500);
+    } else {
+      setShareModalOpen(true);
+    }
+  };
 
   useEffect(() => {
     if (!questionId) return;
@@ -98,6 +169,22 @@ export const QuestionDetailPage: React.FC = () => {
       }
     });
   }, [questionId, currentUser, sortOrder]);
+
+  // Deep link anchor navigation to specific answers
+  useEffect(() => {
+    if (!loading && answers.length > 0 && window.location.hash) {
+      const targetId = window.location.hash.replace('#', '');
+      const timer = setTimeout(() => {
+        const el = document.getElementById(targetId);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-2', 'ring-blue-500', 'transition-all');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500'), 3000);
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, answers]);
 
   const handleStartEditQuestion = () => {
     if (!question) return;
@@ -241,6 +328,9 @@ export const QuestionDetailPage: React.FC = () => {
       const refreshed = await answerService.getAnswersForQuestion(question.questionId, sortOrder);
       setAnswers(refreshed);
       setAnswerBody('');
+      if (question) draftsManager.clearAnswerDraft(question.questionId);
+      setAnswerDraftRestored(false);
+      setAnswerDraftSavedAt(null);
       setQuestion(prev => prev ? { ...prev, answerCount: prev.answerCount + 1 } : null);
 
       // Notify question author
@@ -284,12 +374,7 @@ export const QuestionDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="space-y-4 max-w-4xl mx-auto">
-        <div className="h-40 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl animate-pulse" />
-        <div className="h-32 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl animate-pulse" />
-      </div>
-    );
+    return <QuestionDetailSkeleton />;
   }
 
   if (!question) {
@@ -333,17 +418,25 @@ export const QuestionDetailPage: React.FC = () => {
                   <EyeOff className="w-3.5 h-3.5" /> Anonymous
                 </span>
               ) : question.authorUsername ? (
-                <Link to={`/user/${question.authorUsername}`} className="hover:underline font-medium text-neutral-800 dark:text-neutral-200">
-                  {question.authorDisplayName} <span className="text-neutral-400 font-normal">@{question.authorUsername}</span>
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link to={`/user/${question.authorUsername}`} className="hover:underline font-medium text-neutral-800 dark:text-neutral-200">
+                    {question.authorDisplayName} <span className="text-neutral-400 font-normal">@{question.authorUsername}</span>
+                  </Link>
+                  <ReputationBadge userId={question.authorUid} size="xs" />
+                </div>
               ) : (
-                <span className="font-medium text-neutral-800 dark:text-neutral-200">{question.authorDisplayName || 'Member'}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-neutral-800 dark:text-neutral-200">{question.authorDisplayName || 'Member'}</span>
+                  <ReputationBadge userId={question.authorUid} size="xs" />
+                </div>
               )}
               <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
               <span>Asked {new Date(question.createdAt).toLocaleDateString()}</span>
               {question.updatedAt && question.updatedAt > question.createdAt && (
                 <span className="text-neutral-400 text-[11px] italic">(edited)</span>
               )}
+              <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+              <ReadTimeBadge content={`${question.title} ${question.body}`} size="sm" />
             </div>
 
             <div className="flex items-center gap-1">
@@ -368,15 +461,27 @@ export const QuestionDetailPage: React.FC = () => {
                 </>
               )}
               <button
-                onClick={() => setShareModalOpen(true)}
-                className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-md transition-colors cursor-pointer"
-                title="Share question"
-                aria-label="Share question"
+                type="button"
+                onClick={handleCopyDirectUrl}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  copiedDirectUrl
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
+                    : 'text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+                title={copiedDirectUrl ? 'Direct link copied!' : 'Copy conversation link'}
+                aria-label="Share question: copy direct link"
               >
-                <Share2 className="w-4 h-4" />
+                {copiedDirectUrl ? (
+                  <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
+                ) : (
+                  <Share2 className="w-4 h-4" />
+                )}
               </button>
               <button
-                onClick={() => setReportModalOpen(true)}
+                onClick={() => {
+                  setReportTarget({ type: 'question', id: question.questionId });
+                  setReportModalOpen(true);
+                }}
                 className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-md transition-colors cursor-pointer"
                 title="Report question"
                 aria-label="Report question"
@@ -396,11 +501,12 @@ export const QuestionDetailPage: React.FC = () => {
                 maxLength={300}
                 className="w-full px-3.5 py-2 text-sm sm:text-base font-bold bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-neutral-400 text-neutral-900 dark:text-white"
               />
-              <textarea
-                rows={6}
+              <RichTextEditor
                 value={editBody}
-                onChange={(e) => setEditBody(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-neutral-400 text-neutral-900 dark:text-white"
+                onChange={setEditBody}
+                minRows={6}
+                maxLength={10000}
+                placeholder="Edit your question context (supports bold, italics, code blocks, lists)..."
               />
               <div className="flex items-center justify-end gap-2 text-xs">
                 <button
@@ -428,9 +534,10 @@ export const QuestionDetailPage: React.FC = () => {
               </h1>
 
               {/* Body */}
-              <div className="text-sm sm:text-base text-neutral-800 dark:text-neutral-200 leading-relaxed whitespace-pre-line pt-2">
-                {question.body}
-              </div>
+              <FormattedContent
+                content={question.body}
+                className="text-sm sm:text-base text-neutral-800 dark:text-neutral-200 leading-relaxed pt-2"
+              />
             </>
           )}
 
@@ -471,6 +578,30 @@ export const QuestionDetailPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyDirectUrl}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
+                  copiedDirectUrl
+                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold shadow-xs'
+                    : 'border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                }`}
+                title={copiedDirectUrl ? 'Direct link copied to clipboard!' : 'Copy direct link to clipboard'}
+                aria-label="Share question: copy direct link"
+              >
+                {copiedDirectUrl ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
+                    <span>Link Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share</span>
+                  </>
+                )}
+              </button>
+
               {currentUser && (
                 <button
                   onClick={handleToggleFollow}
@@ -497,6 +628,18 @@ export const QuestionDetailPage: React.FC = () => {
               >
                 <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
               </button>
+
+              <button
+                onClick={() => {
+                  setReportTarget({ type: 'question', id: question.questionId });
+                  setReportModalOpen(true);
+                }}
+                className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                title="Report question"
+                aria-label="Report question"
+              >
+                <Flag className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -509,17 +652,33 @@ export const QuestionDetailPage: React.FC = () => {
               {questionComments.map((cm) => (
                 <div key={cm.commentId} className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 text-xs">
                   <div className="flex items-center justify-between text-neutral-400 mb-1">
-                    <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                      {cm.isAnonymous ? 'Anonymous' : cm.authorDisplayName}
-                    </span>
+                    <div className="flex items-center gap-1.5 font-semibold text-neutral-700 dark:text-neutral-300">
+                      <span>{cm.isAnonymous ? 'Anonymous' : cm.authorDisplayName}</span>
+                      {!cm.isAnonymous && cm.authorUid && (
+                        <ReputationBadge userId={cm.authorUid} size="xs" />
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <span>{new Date(cm.createdAt).toLocaleDateString()}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReportTarget({ type: 'comment', id: cm.commentId });
+                          setReportModalOpen(true);
+                        }}
+                        className="text-neutral-400 hover:text-red-600 dark:hover:text-red-400 cursor-pointer p-0.5 transition-colors"
+                        title="Report comment"
+                        aria-label="Report comment"
+                      >
+                        <Flag className="w-3 h-3" />
+                      </button>
                       {currentUser && cm.authorUid === currentUser.uid && (
                         <button
                           type="button"
                           onClick={() => handleDeleteQuestionComment(cm.commentId)}
                           className="text-neutral-400 hover:text-red-600 cursor-pointer p-0.5"
                           title="Delete comment"
+                          aria-label="Delete comment"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -570,39 +729,74 @@ export const QuestionDetailPage: React.FC = () => {
 
         {/* Answer Composer */}
         <section className="p-5 sm:p-6 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl space-y-3">
-          <h2 className="text-sm font-semibold text-neutral-950 dark:text-white">
-            Your Contribution
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-neutral-950 dark:text-white">
+              Your Contribution
+            </h2>
+            {answerDraftSavedAt && (
+              <span className="text-[11px] text-neutral-400 flex items-center gap-1">
+                <Check className="w-3 h-3 text-emerald-500" />
+                <span>Auto-saved ({answerDraftSavedAt})</span>
+              </span>
+            )}
+          </div>
+
+          {answerDraftRestored && (
+            <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-xl text-xs flex items-center justify-between gap-2 animate-fade-in">
+              <span className="text-blue-800 dark:text-blue-200 text-[11px]">
+                Restored unsaved answer draft from browser storage{answerDraftSavedAt ? ` (${answerDraftSavedAt})` : ''}.
+              </span>
+              <button
+                type="button"
+                onClick={handleDiscardAnswerDraft}
+                className="text-red-600 dark:text-red-400 hover:underline text-[11px] font-medium cursor-pointer"
+              >
+                Discard draft
+              </button>
+            </div>
+          )}
 
           {currentUser ? (
             <form onSubmit={handlePostAnswer} className="space-y-3">
-              <textarea
+              <RichTextEditor
                 value={answerBody}
-                onChange={(e) => setAnswerBody(e.target.value)}
-                placeholder="Write a clear, thoughtful, and verified answer..."
-                rows={4}
+                onChange={setAnswerBody}
+                placeholder="Write a clear, thoughtful, and verified answer (supports bold, italics, code blocks, lists)..."
+                minRows={5}
                 required
-                className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-neutral-400 text-neutral-900 dark:text-white"
               />
 
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <label className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isAnonymousAnswer}
-                    onChange={(e) => setIsAnonymousAnswer(e.target.checked)}
-                    className="rounded border-neutral-300 dark:border-neutral-700"
-                  />
-                  <span>Post answer anonymously</span>
-                </label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <label className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isAnonymousAnswer}
+                      onChange={(e) => setIsAnonymousAnswer(e.target.checked)}
+                      className="rounded border-neutral-300 dark:border-neutral-700"
+                    />
+                    <span>Post answer anonymously</span>
+                  </label>
+                </div>
 
-                <button
-                  type="submit"
-                  disabled={!answerBody.trim() || submittingAnswer}
-                  className="px-5 py-2 text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200 rounded-lg disabled:opacity-50 transition-colors shadow-xs"
-                >
-                  {submittingAnswer ? 'Publishing...' : 'Publish Answer'}
-                </button>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  {answerBody.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleDiscardAnswerDraft}
+                      className="px-3 py-1.5 text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
+                    >
+                      Discard
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={!answerBody.trim() || submittingAnswer}
+                    className="px-5 py-2 text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200 rounded-lg disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+                  >
+                    {submittingAnswer ? 'Publishing...' : 'Publish Answer'}
+                  </button>
+                </div>
               </div>
             </form>
           ) : (
@@ -674,8 +868,8 @@ export const QuestionDetailPage: React.FC = () => {
       <ReportModal
         isOpen={reportModalOpen}
         onClose={() => setReportModalOpen(false)}
-        targetType="question"
-        targetId={question.questionId}
+        targetType={reportTarget.type}
+        targetId={reportTarget.id}
       />
 
       <ShareModal
@@ -683,6 +877,7 @@ export const QuestionDetailPage: React.FC = () => {
         onClose={() => setShareModalOpen(false)}
         title={question.title}
         url={`${window.location.origin}/question/${question.questionId}`}
+        targetType="question"
       />
 
       <ConfirmModal
@@ -706,6 +901,28 @@ export const QuestionDetailPage: React.FC = () => {
         confirmVariant="danger"
         loading={deletingAnswer}
       />
+
+      {/* Toast Notification for Direct Link Copy */}
+      {copiedDirectUrl && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-neutral-950 text-white dark:bg-white dark:text-neutral-950 rounded-xl shadow-xl text-xs font-medium animate-in fade-in slide-in-from-bottom-3 duration-200"
+        >
+          <Check className="w-4 h-4 text-emerald-400 dark:text-emerald-600 stroke-[2.5]" />
+          <span>Conversation link copied to clipboard!</span>
+          <button
+            type="button"
+            onClick={() => {
+              setCopiedDirectUrl(false);
+              setShareModalOpen(true);
+            }}
+            className="ml-2 underline text-neutral-300 dark:text-neutral-700 hover:text-white dark:hover:text-neutral-950 text-[11px] cursor-pointer"
+          >
+            More options
+          </button>
+        </div>
+      )}
     </>
   );
 };

@@ -4,6 +4,8 @@ import { Bell, CheckCheck, MessageSquare, Award, ThumbsUp, UserCheck, Shield, Tr
 import { NotificationItem } from '../core/models/types';
 import { notificationService } from '../core/services/notificationService';
 import { useAuth } from '../core/context/AuthContext';
+import { NotificationListSkeleton } from '../components/ui/Skeleton';
+import { ReputationBadge } from '../components/user/ReputationBadge';
 
 export const NotificationsPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -136,11 +138,7 @@ export const NotificationsPage: React.FC = () => {
 
       {/* List */}
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl h-16 animate-pulse" />
-          ))}
-        </div>
+        <NotificationListSkeleton count={4} />
       ) : displayed.length === 0 ? (
         <div className="p-12 text-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl space-y-2">
           <Bell className="w-8 h-8 text-neutral-400 mx-auto" />
@@ -168,9 +166,14 @@ export const NotificationsPage: React.FC = () => {
               </div>
 
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-neutral-950 dark:text-white">
-                  {item.title}
-                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-semibold text-neutral-950 dark:text-white">
+                    {item.title}
+                  </p>
+                  {item.senderUid && (
+                    <ReputationBadge userId={item.senderUid} size="xs" />
+                  )}
+                </div>
                 <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
                   {item.body}
                 </p>

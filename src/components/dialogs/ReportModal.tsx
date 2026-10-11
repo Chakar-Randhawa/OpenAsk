@@ -34,7 +34,25 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setSubmitted(false);
+      setError(null);
+      setDetails('');
+      setReason(REPORT_REASONS[0]);
+    }
+  }, [isOpen, targetId, targetType]);
+
   if (!isOpen) return null;
+
+  const targetLabel =
+    targetType === 'question'
+      ? 'Question'
+      : targetType === 'answer'
+      ? 'Answer'
+      : targetType === 'comment'
+      ? 'Comment'
+      : 'Member';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,11 +90,11 @@ export const ReportModal: React.FC<ReportModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
           <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-semibold text-sm">
             <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <span>Report Content</span>
+            <span>Report {targetLabel}</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-md"
+            className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-md cursor-pointer"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
