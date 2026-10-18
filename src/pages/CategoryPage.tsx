@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { PlusCircle, HelpCircle, Check, ArrowLeft } from 'lucide-react';
+import { PlusCircle, HelpCircle, Check, ArrowLeft, TrendingUp, Award, Clock } from 'lucide-react';
 import { Category, Question } from '../core/models/types';
 import { categoryService } from '../core/services/categoryService';
 import { questionService } from '../core/services/questionService';
@@ -8,12 +8,15 @@ import { useAuth } from '../core/context/AuthContext';
 import { QuestionCard } from '../components/question/QuestionCard';
 import { Skeleton, QuestionListSkeleton } from '../components/ui/Skeleton';
 
+type CategoryFilterTab = 'trending' | 'unanswered' | 'top' | 'new';
+
 export const CategoryPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const { currentUser } = useAuth();
 
   const [category, setCategory] = useState<Category | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [activeFilter, setActiveFilter] = useState<CategoryFilterTab>('trending');
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -23,7 +26,11 @@ export const CategoryPage: React.FC = () => {
 
     Promise.all([
       categoryService.getCategoryBySlug(slug),
-      questionService.getQuestions({ categoryId: slug, limitCount: 40 }),
+      questionService.getQuestions({
+        categoryId: slug,
+        feedType: activeFilter,
+        limitCount: 40
+      }),
       currentUser ? categoryService.isFollowingCategory(currentUser.uid, slug) : Promise.resolve(false)
     ])
       .then(([cat, qList, following]) => {
@@ -37,7 +44,7 @@ export const CategoryPage: React.FC = () => {
       .finally(() => {
         setLoading(false);
       });
-  }, [slug, currentUser]);
+  }, [slug, currentUser, activeFilter]);
 
   const handleToggleFollow = async () => {
     if (!currentUser || !slug) return;
@@ -136,13 +143,64 @@ export const CategoryPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center gap-4 text-xs text-neutral-400">
+        <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between gap-4 text-xs text-neutral-400">
           <span>
             <strong className="text-neutral-900 dark:text-white font-semibold tabular-nums">
               {questions.length}
             </strong> {questions.length === 1 ? 'question' : 'questions'}
           </span>
         </div>
+      </div>
+
+      {/* Discovery Filter Tabs */}
+      <div className="flex items-center gap-1 p-1 bg-neutral-100 dark:bg-neutral-900 rounded-xl overflow-x-auto w-fit">
+        <button
+          onClick={() => setActiveFilter('trending')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+            activeFilter === 'trending'
+              ? 'bg-white dark:bg-neutral-800 text-neutral-950 dark:text-white shadow-xs font-semibold'
+              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>Trending</span>
+        </button>
+
+        <button
+          onClick={() => setActiveFilter('unanswered')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+            activeFilter === 'unanswered'
+              ? 'bg-white dark:bg-neutral-800 text-neutral-950 dark:text-white shadow-xs font-semibold'
+              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+          }`}
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+          <span>Unanswered</span>
+        </button>
+
+        <button
+          onClick={() => setActiveFilter('top')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+            activeFilter === 'top'
+              ? 'bg-white dark:bg-neutral-800 text-neutral-950 dark:text-white shadow-xs font-semibold'
+              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+          }`}
+        >
+          <Award className="w-3.5 h-3.5" />
+          <span>Top</span>
+        </button>
+
+        <button
+          onClick={() => setActiveFilter('new')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+            activeFilter === 'new'
+              ? 'bg-white dark:bg-neutral-800 text-neutral-950 dark:text-white shadow-xs font-semibold'
+              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+          }`}
+        >
+          <Clock className="w-3.5 h-3.5" />
+          <span>Newest</span>
+        </button>
       </div>
 
       {/* Questions in Category */}

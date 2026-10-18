@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase/firebase';
 import { Question, QuestionOwner, SavedItem, QuestionFollow } from '../models/types';
+import { notificationService } from './notificationService';
 
 const QUESTIONS_COLLECTION = 'questions';
 const QUESTION_OWNERS_COLLECTION = 'questionOwners';
@@ -39,7 +40,7 @@ export interface GetQuestionsOptions {
   categoryId?: string;
   tag?: string;
   authorUid?: string;
-  feedType?: 'forYou' | 'trending' | 'new' | 'following';
+  feedType?: 'forYou' | 'trending' | 'new' | 'following' | 'top' | 'unanswered' | 'solved' | 'my_feed';
   followedCategories?: string[];
   followedUsers?: string[];
   limitCount?: number;
@@ -103,18 +104,18 @@ export const questionService = {
     const count = opts.limitCount || 20;
 
     try {
+      let questions: Question[] = [];
+
       if (opts.categoryId) {
         const q = query(
           collection(db, QUESTIONS_COLLECTION),
           where('categoryId', '==', opts.categoryId),
           orderBy('createdAt', 'desc'),
-          limit(count)
+          limit(Math.max(count, 50))
         );
         const snap = await getDocs(q);
-        return snap.docs.map(d => d.data() as Question);
-      }
-
-      if (opts.authorUid) {
+        questions = snap.docs.map(d => d.data() as Question);
+      } else if (opts.authorUid) {
         const q = query(
           collection(db, QUESTIONS_COLLECTION),
           where('authorUid', '==', opts.authorUid),
@@ -123,9 +124,7 @@ export const questionService = {
         );
         const snap = await getDocs(q);
         return snap.docs.map(d => d.data() as Question);
-      }
-
-      if (opts.feedType === 'following' && opts.followedUsers && opts.followedUsers.length > 0) {
+      } else if (opts.feedType === 'following' && opts.followedUsers && opts.followedUsers.length > 0) {
         // Query questions by followed users (Firestore where 'in' allows up to 10 items)
         const targetUsers = opts.followedUsers.slice(0, 10);
         const q = query(
@@ -136,27 +135,61 @@ export const questionService = {
         const snap = await getDocs(q);
         const list = snap.docs.map(d => d.data() as Question);
         return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } else {
+        // Base questions list
+        const q = query(
+          collection(db, QUESTIONS_COLLECTION),
+          orderBy('createdAt', 'desc'),
+          limit(Math.max(count, 50))
+        );
+        const snap = await getDocs(q);
+        questions = snap.docs.map(d => d.data() as Question);
       }
-
-      // Default chronological / discovery feed
-      const q = query(
-        collection(db, QUESTIONS_COLLECTION),
-        orderBy('createdAt', 'desc'),
-        limit(count)
-      );
-      const snap = await getDocs(q);
-      const questions = snap.docs.map(d => d.data() as Question);
 
       if (opts.feedType === 'trending') {
         // Deterministic trending ranking: (views * 1) + (answers * 5) + (votes * 3) / freshness factor
-        return [...questions].sort((a, b) => {
-          const scoreA = (a.viewCount * 1) + (a.answerCount * 5) + (a.voteCount * 3);
-          const scoreB = (b.viewCount * 1) + (b.answerCount * 5) + (b.voteCount * 3);
-          return scoreB - scoreA;
-        });
+        return [...questions]
+          .sort((a, b) => {
+            const scoreA = (a.viewCount * 1) + (a.answerCount * 5) + (a.voteCount * 3);
+            const scoreB = (b.viewCount * 1) + (b.answerCount * 5) + (b.voteCount * 3);
+            return scoreB - scoreA;
+          })
+          .slice(0, count);
       }
 
-      return questions;
+      if (opts.feedType === 'top') {
+        return [...questions]
+          .sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0))
+          .slice(0, count);
+      }
+
+      if (opts.feedType === 'unanswered') {
+        return questions
+          .filter(q => (q.answerCount || 0) === 0 || !q.acceptedAnswerId)
+          .sort((a, b) => (a.answerCount || 0) - (b.answerCount || 0))
+          .slice(0, count);
+      }
+
+      if (opts.feedType === 'solved') {
+        return questions
+          .filter(q => Boolean(q.acceptedAnswerId || q.isSolved))
+          .slice(0, count);
+      }
+
+      if (opts.feedType === 'my_feed' || opts.feedType === 'forYou') {
+        const followedCats = new Set(opts.followedCategories || []);
+        const followedUsers = new Set(opts.followedUsers || []);
+        if (followedCats.size > 0 || followedUsers.size > 0) {
+          const personalized = questions.filter(
+            q => followedCats.has(q.categoryId) || (q.authorUid && followedUsers.has(q.authorUid))
+          );
+          if (personalized.length > 0) {
+            return personalized.slice(0, count);
+          }
+        }
+      }
+
+      return questions.slice(0, count);
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, QUESTIONS_COLLECTION);
     }
@@ -361,6 +394,105 @@ export const questionService = {
       });
 
       return delta;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${QUESTIONS_COLLECTION}/${questionId}`);
+    }
+  },
+
+  async acceptAnswer(
+    questionId: string,
+    answerId: string,
+    authorUid: string,
+    answerAuthorUid?: string,
+    previousAcceptedAnswerId?: string
+  ): Promise<void> {
+    try {
+      const qRef = doc(db, QUESTIONS_COLLECTION, questionId);
+      const qSnap = await getDoc(qRef);
+      if (!qSnap.exists()) throw new Error('Question not found');
+      const qData = qSnap.data() as Question;
+
+      // Only question author can accept
+      if (qData.authorUid && qData.authorUid !== authorUid) {
+        throw new Error('Only the author of the question can accept an answer.');
+      }
+
+      const batch = writeBatch(db);
+
+      // 1. Mark question with acceptedAnswerId
+      batch.update(qRef, {
+        acceptedAnswerId: answerId,
+        isSolved: true,
+        updatedAt: new Date().toISOString()
+      });
+
+      // 2. Mark target answer as accepted
+      const ansRef = doc(db, 'answers', answerId);
+      batch.update(ansRef, {
+        isAccepted: true,
+        updatedAt: new Date().toISOString()
+      });
+
+      // 3. If replacing another accepted answer, unmark previous
+      if (previousAcceptedAnswerId && previousAcceptedAnswerId !== answerId) {
+        const prevAnsRef = doc(db, 'answers', previousAcceptedAnswerId);
+        batch.update(prevAnsRef, {
+          isAccepted: false,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      await batch.commit();
+
+      // 4. Send notification with reputation gain alert
+      if (answerAuthorUid && answerAuthorUid !== authorUid) {
+        notificationService.createNotification(
+          answerAuthorUid,
+          'accepted',
+          'Answer Accepted as Solution! ⭐',
+          `Your answer on "${qData.title}" was accepted as the verified solution (+15 reputation).`,
+          questionId,
+          'question',
+          authorUid,
+          qData.authorDisplayName || 'The Author',
+          15
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${QUESTIONS_COLLECTION}/${questionId}`);
+    }
+  },
+
+  async unacceptAnswer(
+    questionId: string,
+    answerId: string,
+    authorUid: string
+  ): Promise<void> {
+    try {
+      const qRef = doc(db, QUESTIONS_COLLECTION, questionId);
+      const qSnap = await getDoc(qRef);
+      if (!qSnap.exists()) throw new Error('Question not found');
+      const qData = qSnap.data() as Question;
+
+      if (qData.authorUid && qData.authorUid !== authorUid) {
+        throw new Error('Only the author of the question can unaccept an answer.');
+      }
+
+      const batch = writeBatch(db);
+
+      batch.update(qRef, {
+        acceptedAnswerId: null,
+        isSolved: false,
+        updatedAt: new Date().toISOString()
+      });
+
+      const ansRef = doc(db, 'answers', answerId);
+      batch.update(ansRef, {
+        isAccepted: false,
+        updatedAt: new Date().toISOString()
+      });
+
+      await batch.commit();
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${QUESTIONS_COLLECTION}/${questionId}`);
     }

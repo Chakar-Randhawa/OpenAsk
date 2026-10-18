@@ -63,13 +63,14 @@ export const notificationService = {
 
   async createNotification(
     recipientUid: string,
-    type: 'answer' | 'comment' | 'helpful' | 'vote' | 'follow' | 'system',
+    type: 'answer' | 'comment' | 'helpful' | 'vote' | 'follow' | 'system' | 'accepted',
     title: string,
     body: string,
     targetId?: string,
     targetType?: string,
     senderUid?: string,
-    senderName?: string
+    senderName?: string,
+    reputationDelta?: number
   ): Promise<void> {
     if (senderUid && senderUid === recipientUid) return; // Do not notify self
     const notificationId = 'notif_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
@@ -83,6 +84,7 @@ export const notificationService = {
       body,
       targetId,
       targetType,
+      reputationDelta,
       isRead: false,
       createdAt: new Date().toISOString()
     };

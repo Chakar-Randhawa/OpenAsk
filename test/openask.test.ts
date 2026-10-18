@@ -560,4 +560,54 @@ assert.strictEqual(draftsManager.loadAnswerDraft(testQId), null, 'Cleared answer
 
 console.log('✓ Passed: Auto-Save Drafts Management Invariants verified.');
 
+// Test 21: Post & Comment Voting and Irrelevant Content Collapsing Invariants
+console.log('Test 21: Validating Post & Comment Voting and Irrelevant Content Invariants...');
+
+// 1. Voting delta calculation math for posts and comments
+function computeVoteDelta(currentVote: 1 | -1 | 0, targetVote: 1 | -1): { delta: number; nextVote: 1 | -1 | 0 } {
+  if (currentVote === targetVote) {
+    // Un-vote / cancel
+    return { delta: -targetVote, nextVote: 0 };
+  } else if (currentVote !== 0) {
+    // Flip vote (-1 to 1 or 1 to -1)
+    return { delta: targetVote * 2, nextVote: targetVote };
+  } else {
+    // Cast fresh vote
+    return { delta: targetVote, nextVote: targetVote };
+  }
+}
+
+// Upvote from neutral
+assert.deepStrictEqual(computeVoteDelta(0, 1), { delta: 1, nextVote: 1 }, 'Neutral to Upvote must delta +1');
+// Downvote from neutral
+assert.deepStrictEqual(computeVoteDelta(0, -1), { delta: -1, nextVote: -1 }, 'Neutral to Downvote must delta -1');
+// Upvote cancel
+assert.deepStrictEqual(computeVoteDelta(1, 1), { delta: -1, nextVote: 0 }, 'Cancelling Upvote must delta -1');
+// Downvote cancel
+assert.deepStrictEqual(computeVoteDelta(-1, -1), { delta: 1, nextVote: 0 }, 'Cancelling Downvote must delta +1');
+// Vote flip from downvote to upvote
+assert.deepStrictEqual(computeVoteDelta(-1, 1), { delta: 2, nextVote: 1 }, 'Flipping from -1 to 1 must delta +2');
+// Vote flip from upvote to downvote
+assert.deepStrictEqual(computeVoteDelta(1, -1), { delta: -2, nextVote: -1 }, 'Flipping from 1 to -1 must delta -2');
+
+// 2. Content quality & collapsing threshold invariants
+function isContentIrrelevant(voteCount: number, targetType: 'question' | 'answer' | 'comment'): boolean {
+  if (targetType === 'comment') return voteCount <= -2;
+  return voteCount <= -3;
+}
+
+function isHighQualityContribution(voteCount: number, targetType: 'question' | 'answer'): boolean {
+  if (targetType === 'answer') return voteCount >= 5;
+  return voteCount >= 8;
+}
+
+assert.strictEqual(isContentIrrelevant(-2, 'comment'), true, 'Comment with -2 votes must be marked irrelevant');
+assert.strictEqual(isContentIrrelevant(-1, 'comment'), false, 'Comment with -1 votes should remain visible');
+assert.strictEqual(isContentIrrelevant(-3, 'answer'), true, 'Answer with -3 votes must be collapsed');
+assert.strictEqual(isContentIrrelevant(-2, 'answer'), false, 'Answer with -2 votes should remain uncollapsed');
+assert.strictEqual(isHighQualityContribution(5, 'answer'), true, 'Answer with 5+ votes must be highlighted high quality');
+assert.strictEqual(isHighQualityContribution(8, 'question'), true, 'Question with 8+ votes must be highlighted high signal');
+
+console.log('✓ Passed: Post & Comment Voting and Irrelevant Content Invariants verified.');
+
 console.log('--- ALL OPENASK PLATFORM INVARIANT TESTS PASSED SUCCESSFULLY ---');

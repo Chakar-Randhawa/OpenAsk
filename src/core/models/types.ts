@@ -52,6 +52,8 @@ export interface Question {
   viewCount: number;
   voteCount: number;
   followerCount: number;
+  acceptedAnswerId?: string;
+  isSolved?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,6 +75,7 @@ export interface Answer {
   authorPhotoUrl?: string;
   voteCount: number;
   helpfulCount: number;
+  isAccepted?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -167,11 +170,12 @@ export interface NotificationItem {
   recipientUid: string;
   senderUid?: string;
   senderName?: string;
-  type: 'answer' | 'comment' | 'helpful' | 'vote' | 'follow' | 'system';
+  type: 'answer' | 'comment' | 'helpful' | 'vote' | 'follow' | 'system' | 'accepted';
   title: string;
   body: string;
   targetId?: string;
   targetType?: string;
+  reputationDelta?: number;
   isRead: boolean;
   createdAt: string;
 }

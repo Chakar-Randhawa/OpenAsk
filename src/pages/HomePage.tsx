@@ -7,6 +7,7 @@ import {
   Users,
   PlusCircle,
   HelpCircle,
+  Award,
   RefreshCw
 } from 'lucide-react';
 import { Question, Category } from '../core/models/types';
@@ -19,7 +20,7 @@ import { ContextSidebar } from '../components/layout/ContextSidebar';
 import { ConfirmModal } from '../components/dialogs/ConfirmModal';
 import { QuestionListSkeleton } from '../components/ui/Skeleton';
 
-type FeedTab = 'forYou' | 'trending' | 'new' | 'following';
+type FeedTab = 'forYou' | 'trending' | 'unanswered' | 'top' | 'new' | 'following';
 
 export const HomePage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -37,14 +38,22 @@ export const HomePage: React.FC = () => {
     setLoading(true);
     try {
       let fUsers: string[] = [];
-      if (currentUser && tab === 'following') {
-        fUsers = await userService.getFollowingUids(currentUser.uid);
-        setFollowedUsers(fUsers);
+      let fCats: string[] = [];
+
+      if (currentUser) {
+        if (tab === 'following' || tab === 'forYou') {
+          fUsers = await userService.getFollowingUids(currentUser.uid);
+          setFollowedUsers(fUsers);
+        }
+        if (tab === 'forYou') {
+          fCats = await categoryService.getFollowedCategories(currentUser.uid);
+        }
       }
 
       const list = await questionService.getQuestions({
         feedType: tab,
         followedUsers: fUsers,
+        followedCategories: fCats,
         limitCount: 30
       });
       setQuestions(list);
@@ -129,6 +138,30 @@ export const HomePage: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab('unanswered')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+                activeTab === 'unanswered'
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-950 dark:text-white shadow-xs font-semibold'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Unanswered</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('top')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+                activeTab === 'top'
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-950 dark:text-white shadow-xs font-semibold'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <Award className="w-3.5 h-3.5" />
+              <span>Top</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('new')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                 activeTab === 'new'
@@ -137,7 +170,7 @@ export const HomePage: React.FC = () => {
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>New</span>
+              <span>Newest</span>
             </button>
 
             {currentUser && (

@@ -13,7 +13,11 @@ import {
   ArrowLeft,
   Edit3,
   MessageCircle,
-  ChevronRight
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  Sparkles,
+  FileText
 } from 'lucide-react';
 import { Question, Answer, Comment } from '../core/models/types';
 import { questionService } from '../core/services/questionService';
@@ -23,9 +27,11 @@ import { notificationService } from '../core/services/notificationService';
 import { useAuth } from '../core/context/AuthContext';
 import { copyToClipboard } from '../core/utils/clipboard';
 import { AnswerCard } from '../components/answer/AnswerCard';
+import { CommentItem } from '../components/comment/CommentItem';
 import { ReportModal } from '../components/dialogs/ReportModal';
 import { ShareModal } from '../components/dialogs/ShareModal';
 import { ConfirmModal } from '../components/dialogs/ConfirmModal';
+import { ExportThreadModal } from '../components/question/ExportThreadModal';
 import { QuestionDetailSkeleton } from '../components/ui/Skeleton';
 import { ReputationBadge } from '../components/user/ReputationBadge';
 import { RichTextEditor, FormattedContent } from '../components/editor';
@@ -117,11 +123,77 @@ export const QuestionDetailPage: React.FC = () => {
     id: questionId || ''
   });
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingQuestion, setDeletingQuestion] = useState(false);
   const [answerToDelete, setAnswerToDelete] = useState<string | null>(null);
   const [deletingAnswer, setDeletingAnswer] = useState(false);
   const [copiedDirectUrl, setCopiedDirectUrl] = useState(false);
+
+  // Accepted Solution toggle handler
+  const handleToggleAcceptAnswer = async (answerId: string) => {
+    if (!currentUser || !question || question.authorUid !== currentUser.uid) return;
+    try {
+      const isCurrentAccepted = question.acceptedAnswerId === answerId;
+      if (isCurrentAccepted) {
+        await questionService.unacceptAnswer(question.questionId, answerId, currentUser.uid);
+        setQuestion(prev => prev ? { ...prev, acceptedAnswerId: undefined, isSolved: false } : null);
+        setAnswers(prev => prev.map(a => a.answerId === answerId ? { ...a, isAccepted: false } : a));
+      } else {
+        const targetAns = answers.find(a => a.answerId === answerId);
+        await questionService.acceptAnswer(
+          question.questionId,
+          answerId,
+          currentUser.uid,
+          targetAns?.authorUid,
+          question.acceptedAnswerId
+        );
+        setQuestion(prev => prev ? { ...prev, acceptedAnswerId: answerId, isSolved: true } : null);
+        setAnswers(prev => prev.map(a => ({
+          ...a,
+          isAccepted: a.answerId === answerId
+        })));
+      }
+    } catch (err) {
+      console.error('Error toggling accepted answer:', err);
+    }
+  };
+
+  // Question voting state
+  const [questionVoteCount, setQuestionVoteCount] = useState<number>(0);
+  const [questionUserVote, setQuestionUserVote] = useState<1 | -1 | 0>(0);
+  const [questionVotingLoading, setQuestionVotingLoading] = useState(false);
+
+  const handleQuestionVote = async (val: 1 | -1) => {
+    if (!currentUser || !question || questionVotingLoading) return;
+    setQuestionVotingLoading(true);
+
+    const oldVote = questionUserVote;
+    const oldScore = questionVoteCount;
+
+    let delta: number = val;
+    if (questionUserVote === val) {
+      setQuestionUserVote(0);
+      delta = -val;
+    } else if (questionUserVote !== 0) {
+      setQuestionUserVote(val);
+      delta = val * 2;
+    } else {
+      setQuestionUserVote(val);
+      delta = val;
+    }
+    setQuestionVoteCount((prev) => prev + delta);
+
+    try {
+      await questionService.voteQuestion(currentUser.uid, question.questionId, val);
+    } catch (err) {
+      console.error('Error voting on question:', err);
+      setQuestionUserVote(oldVote);
+      setQuestionVoteCount(oldScore);
+    } finally {
+      setQuestionVotingLoading(false);
+    }
+  };
 
   const handleCopyDirectUrl = async () => {
     if (!question) return;
@@ -150,11 +222,16 @@ export const QuestionDetailPage: React.FC = () => {
       currentUser ? questionService.isFollowingQuestion(currentUser.uid, questionId) : Promise.resolve(false)
     ]).then(async ([q, ansList, qComments, saved, following]) => {
       setQuestion(q);
+      if (q) setQuestionVoteCount(q.voteCount || 0);
       setAnswers(ansList);
       setQuestionComments(qComments);
       setIsSaved(saved);
       setIsFollowing(following);
       setLoading(false);
+
+      if (currentUser && q) {
+        questionService.getUserVote(currentUser.uid, q.questionId).then(setQuestionUserVote);
+      }
 
       if (q && q.categoryId) {
         try {
@@ -558,7 +635,40 @@ export const QuestionDetailPage: React.FC = () => {
 
           {/* Actions Bar */}
           <div className="flex flex-wrap items-center justify-between pt-4 border-t border-neutral-100 dark:border-neutral-800 text-xs">
-            <div className="flex items-center gap-4 text-neutral-500">
+            <div className="flex items-center gap-3 sm:gap-4 text-neutral-500">
+              {/* Question Voting Controls */}
+              <div className="flex items-center gap-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleQuestionVote(1)}
+                  disabled={!currentUser || questionVotingLoading}
+                  className={`p-1 rounded-md hover:bg-white dark:hover:bg-neutral-700 transition-colors cursor-pointer ${
+                    questionUserVote === 1 ? 'text-emerald-600 font-bold bg-white dark:bg-neutral-700 shadow-xs' : 'text-neutral-500'
+                  }`}
+                  title="Upvote question"
+                  aria-label="Upvote question"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <span className={`px-1.5 font-semibold tabular-nums text-xs ${
+                  questionVoteCount > 0 ? 'text-emerald-600 dark:text-emerald-400' : questionVoteCount < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-900 dark:text-neutral-100'
+                }`}>
+                  {questionVoteCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleQuestionVote(-1)}
+                  disabled={!currentUser || questionVotingLoading}
+                  className={`p-1 rounded-md hover:bg-white dark:hover:bg-neutral-700 transition-colors cursor-pointer ${
+                    questionUserVote === -1 ? 'text-rose-600 font-bold bg-white dark:bg-neutral-700 shadow-xs' : 'text-neutral-500'
+                  }`}
+                  title="Downvote question"
+                  aria-label="Downvote question"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
               <span className="flex items-center gap-1.5">
                 <MessageSquare className="w-4 h-4" />
                 <span className="font-semibold tabular-nums text-neutral-900 dark:text-white">{question.answerCount}</span> answers
@@ -600,6 +710,17 @@ export const QuestionDetailPage: React.FC = () => {
                     <span>Share</span>
                   </>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExportModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-medium transition-colors cursor-pointer"
+                title="Export discussion as Markdown or Printable PDF"
+                aria-label="Export discussion"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-500" />
+                <span className="hidden sm:inline">Export</span>
               </button>
 
               {currentUser && (
@@ -650,43 +771,15 @@ export const QuestionDetailPage: React.FC = () => {
                 Comments on this question
               </p>
               {questionComments.map((cm) => (
-                <div key={cm.commentId} className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 text-xs">
-                  <div className="flex items-center justify-between text-neutral-400 mb-1">
-                    <div className="flex items-center gap-1.5 font-semibold text-neutral-700 dark:text-neutral-300">
-                      <span>{cm.isAnonymous ? 'Anonymous' : cm.authorDisplayName}</span>
-                      {!cm.isAnonymous && cm.authorUid && (
-                        <ReputationBadge userId={cm.authorUid} size="xs" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span>{new Date(cm.createdAt).toLocaleDateString()}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setReportTarget({ type: 'comment', id: cm.commentId });
-                          setReportModalOpen(true);
-                        }}
-                        className="text-neutral-400 hover:text-red-600 dark:hover:text-red-400 cursor-pointer p-0.5 transition-colors"
-                        title="Report comment"
-                        aria-label="Report comment"
-                      >
-                        <Flag className="w-3 h-3" />
-                      </button>
-                      {currentUser && cm.authorUid === currentUser.uid && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteQuestionComment(cm.commentId)}
-                          className="text-neutral-400 hover:text-red-600 cursor-pointer p-0.5"
-                          title="Delete comment"
-                          aria-label="Delete comment"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-neutral-800 dark:text-neutral-200">{cm.body}</p>
-                </div>
+                <CommentItem
+                  key={cm.commentId}
+                  comment={cm}
+                  onDelete={handleDeleteQuestionComment}
+                  onReport={(cId) => {
+                    setReportTarget({ type: 'comment', id: cId });
+                    setReportModalOpen(true);
+                  }}
+                />
               ))}
 
               {currentUser ? (
@@ -853,17 +946,38 @@ export const QuestionDetailPage: React.FC = () => {
               </p>
             </div>
           ) : (
-            answers.map((ans) => (
-              <AnswerCard
-                key={ans.answerId}
-                answer={ans}
-                onDelete={handleDeleteAnswer}
-              />
-            ))
+            [...answers]
+              .sort((a, b) => {
+                const aAcc = a.answerId === question.acceptedAnswerId || a.isAccepted;
+                const bAcc = b.answerId === question.acceptedAnswerId || b.isAccepted;
+                if (aAcc && !bAcc) return -1;
+                if (!aAcc && bAcc) return 1;
+                if (sortOrder === 'votes') {
+                  return (b.voteCount || 0) - (a.voteCount || 0);
+                }
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+              })
+              .map((ans) => (
+                <AnswerCard
+                  key={ans.answerId}
+                  answer={ans}
+                  isQuestionAuthor={Boolean(isAuthor)}
+                  isAcceptedAnswer={ans.answerId === question.acceptedAnswerId || Boolean(ans.isAccepted)}
+                  onToggleAccept={handleToggleAcceptAnswer}
+                  onDelete={handleDeleteAnswer}
+                />
+              ))
           )}
         </section>
 
       </div>
+
+      <ExportThreadModal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        question={question}
+        answers={answers}
+      />
 
       <ReportModal
         isOpen={reportModalOpen}

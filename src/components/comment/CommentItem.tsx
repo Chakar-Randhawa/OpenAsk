@@ -39,7 +39,7 @@ export const CommentItem: React.FC<CommentItemProps> = ({
     const oldVote = userVote;
     const oldScore = voteCount;
 
-    let delta = value;
+    let delta: number = value;
     if (userVote === value) {
       setUserVote(0);
       delta = -value;

@@ -4,6 +4,8 @@ import {
   ChevronUp,
   ChevronDown,
   CheckCircle2,
+  CheckCircle,
+  Check,
   Share2,
   Flag,
   MoreHorizontal,
@@ -27,10 +29,19 @@ import { CommentItem } from '../comment/CommentItem';
 
 interface AnswerCardProps {
   answer: Answer;
+  isQuestionAuthor?: boolean;
+  isAcceptedAnswer?: boolean;
+  onToggleAccept?: (answerId: string) => void;
   onDelete?: (answerId: string) => void;
 }
 
-export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
+export const AnswerCard: React.FC<AnswerCardProps> = ({
+  answer,
+  isQuestionAuthor = false,
+  isAcceptedAnswer = false,
+  onToggleAccept,
+  onDelete
+}) => {
   const { currentUser, userProfile } = useAuth();
   const [currentBody, setCurrentBody] = useState(answer.body);
   const [isEditing, setIsEditing] = useState(false);
@@ -208,14 +219,36 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
     );
   }
 
+  const accepted = Boolean(isAcceptedAnswer || answer.isAccepted);
+
   return (
     <>
       <article id={answer.answerId} className={`p-4 sm:p-5 bg-white dark:bg-neutral-900 border rounded-xl space-y-3 scroll-mt-20 ${
-        voteCount >= 5
+        accepted
+          ? 'border-2 border-emerald-500 dark:border-emerald-500 shadow-sm'
+          : voteCount >= 5
           ? 'border-emerald-200 dark:border-emerald-800/80 shadow-xs'
           : 'border-neutral-200 dark:border-neutral-800'
       }`}>
-        
+        {/* Accepted Solution Top Banner */}
+        {accepted && (
+          <div className="flex items-center justify-between px-3.5 py-2 -mx-4 -mt-4 sm:-mx-5 sm:-mt-5 mb-3 bg-emerald-50 dark:bg-emerald-950/40 border-b border-emerald-200 dark:border-emerald-800/60 rounded-t-xl text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 fill-emerald-600 text-white dark:text-neutral-900 shrink-0" />
+              <span>Accepted Solution (Verified by Author)</span>
+            </div>
+            {isQuestionAuthor && onToggleAccept && (
+              <button
+                type="button"
+                onClick={() => onToggleAccept(answer.answerId)}
+                className="text-[11px] font-normal underline hover:text-emerald-950 dark:hover:text-emerald-200 cursor-pointer"
+              >
+                Unmark solution
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Header: Author & Date */}
         <div className="flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 flex-wrap">
@@ -398,7 +431,20 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Accept Solution Button (Only for Question Author) */}
+            {isQuestionAuthor && !accepted && onToggleAccept && (
+              <button
+                type="button"
+                onClick={() => onToggleAccept(answer.answerId)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 text-xs font-semibold transition-colors cursor-pointer"
+                title="Mark this answer as the accepted verified solution (+15 rep to author)"
+              >
+                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Accept Solution</span>
+              </button>
+            )}
+
             {/* Helpful Indicator Button */}
             <button
               onClick={handleToggleHelpful}
@@ -452,43 +498,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ answer, onDelete }) => {
         {commentsOpen && (
           <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-3">
             {comments.map((cm) => (
-              <div key={cm.commentId} className="p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/40 text-xs">
-                <div className="flex items-center justify-between text-neutral-400 mb-1">
-                  <div className="flex items-center gap-1.5 font-semibold text-neutral-700 dark:text-neutral-300">
-                    <span>{cm.isAnonymous ? 'Anonymous' : cm.authorDisplayName}</span>
-                    {!cm.isAnonymous && cm.authorUid && (
-                      <ReputationBadge userId={cm.authorUid} size="xs" />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span>{new Date(cm.createdAt).toLocaleDateString()}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReportTarget({ type: 'comment', id: cm.commentId });
-                        setReportModalOpen(true);
-                      }}
-                      className="text-neutral-400 hover:text-red-600 dark:hover:text-red-400 cursor-pointer p-0.5 transition-colors"
-                      title="Report comment"
-                      aria-label="Report comment"
-                    >
-                      <Flag className="w-3 h-3" />
-                    </button>
-                    {currentUser && cm.authorUid === currentUser.uid && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteComment(cm.commentId)}
-                        className="text-neutral-400 hover:text-red-600 cursor-pointer p-0.5"
-                        title="Delete comment"
-                        aria-label="Delete comment"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <p className="text-neutral-800 dark:text-neutral-200">{cm.body}</p>
-              </div>
+              <CommentItem
+                key={cm.commentId}
+                comment={cm}
+                onDelete={handleDeleteComment}
+                onReport={(cId) => {
+                  setReportTarget({ type: 'comment', id: cId });
+                  setReportModalOpen(true);
+                }}
+              />
             ))}
 
             {currentUser ? (

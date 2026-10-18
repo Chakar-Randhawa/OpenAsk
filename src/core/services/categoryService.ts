@@ -155,5 +155,20 @@ export const categoryService = {
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `${CATEGORY_FOLLOWS_COLLECTION}/${followId}`);
     }
+  },
+
+  async getFollowedCategories(userId: string): Promise<string[]> {
+    if (!userId) return [];
+    try {
+      const q = query(
+        collection(db, CATEGORY_FOLLOWS_COLLECTION),
+        where('userId', '==', userId)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => (d.data() as CategoryFollow).categorySlug);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, CATEGORY_FOLLOWS_COLLECTION);
+      return [];
+    }
   }
 };

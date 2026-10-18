@@ -125,6 +125,8 @@ export function computeReputation(params: {
   questions?: number;
   upvotes?: number;
   helpful?: number;
+  acceptedAnswers?: number;
+  curatedSolutions?: number;
   baseReputation?: number;
 }): number {
   const base = params.baseReputation !== undefined ? params.baseReputation : 10;
@@ -132,8 +134,10 @@ export function computeReputation(params: {
   const fromQuestions = (params.questions || 0) * 2;
   const fromUpvotes = (params.upvotes || 0) * 10;
   const fromHelpful = (params.helpful || 0) * 15;
+  const fromAccepted = (params.acceptedAnswers || 0) * 15;
+  const fromCurated = (params.curatedSolutions || 0) * 2;
 
-  return Math.max(10, base + fromAnswers + fromQuestions + fromUpvotes + fromHelpful);
+  return Math.max(10, base + fromAnswers + fromQuestions + fromUpvotes + fromHelpful + fromAccepted + fromCurated);
 }
 
 /**

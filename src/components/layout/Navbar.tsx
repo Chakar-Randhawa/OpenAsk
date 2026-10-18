@@ -9,10 +9,15 @@ import {
   Settings,
   Bookmark,
   Menu,
-  X
+  X,
+  Command
 } from 'lucide-react';
 import { useAuth } from '../../core/context/AuthContext';
 import { ThemeToggle } from '../theme/ThemeToggle';
+import { CommandPalette } from './CommandPalette';
+import { NotificationDrawer } from './NotificationDrawer';
+import { NotificationItem } from '../../core/models/types';
+import { notificationService } from '../../core/services/notificationService';
 
 interface NavbarProps {
   onOpenMobileMenu?: () => void;
@@ -26,8 +31,70 @@ export const Navbar: React.FC<NavbarProps> = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard shortcut for Command Palette: Cmd + K or Ctrl + K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Fetch notifications for current user
+  useEffect(() => {
+    if (!currentUser) {
+      setNotifications([]);
+      return;
+    }
+    setNotificationsLoading(true);
+    notificationService
+      .getNotifications(currentUser.uid)
+      .then((items) => setNotifications(items))
+      .catch((err) => console.warn('Could not load navbar notifications:', err))
+      .finally(() => setNotificationsLoading(false));
+  }, [currentUser]);
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const handleMarkAllRead = async () => {
+    if (!currentUser) return;
+    try {
+      await notificationService.markAllAsRead(notifications);
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    } catch (err) {
+      console.error('Error marking all notifications read:', err);
+    }
+  };
+
+  const handleMarkRead = async (notificationId: string) => {
+    try {
+      await notificationService.markAsRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.notificationId === notificationId ? { ...n, isRead: true } : n))
+      );
+    } catch (err) {
+      console.error('Error marking notification read:', err);
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await notificationService.deleteNotification(notificationId);
+      setNotifications((prev) => prev.filter((n) => n.notificationId !== notificationId));
+    } catch (err) {
+      console.error('Error deleting notification:', err);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -99,17 +166,31 @@ export const Navbar: React.FC<NavbarProps> = () => {
         {/* Zone 3: Actions (Search, Theme, Ask, User) */}
         <div className="flex items-center gap-2 sm:gap-3">
           
-          {/* Quick Search Bar */}
-          <form onSubmit={handleSearchSubmit} className="hidden sm:flex relative items-center">
-            <Search className="w-4 h-4 absolute left-3 text-neutral-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search topics, questions, @username..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-44 md:w-60 lg:w-72 pl-9 pr-3 py-1.5 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 rounded-lg border border-transparent focus:border-neutral-300 dark:focus:border-neutral-700 focus:bg-white dark:focus:bg-neutral-900 focus:outline-none transition-all"
-            />
-          </form>
+          {/* Quick Search & Command Palette Trigger (Cmd+K) */}
+          <button
+            type="button"
+            onClick={() => setCommandPaletteOpen(true)}
+            className="hidden sm:flex items-center gap-2 pl-3 pr-2 py-1.5 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white rounded-lg border border-transparent hover:border-neutral-300 dark:hover:border-neutral-700 transition-all w-44 md:w-56 lg:w-64 justify-between"
+            title="Open Command Palette (Cmd + K)"
+          >
+            <span className="flex items-center gap-2 truncate">
+              <Search className="w-3.5 h-3.5 text-neutral-400" />
+              <span className="truncate">Search or jump to...</span>
+            </span>
+            <kbd className="hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-neutral-500 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded shadow-xs">
+              <span>⌘</span>K
+            </kbd>
+          </button>
+
+          {/* Mobile search trigger */}
+          <button
+            type="button"
+            onClick={() => setCommandPaletteOpen(true)}
+            className="sm:hidden p-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            aria-label="Search"
+          >
+            <Search className="w-4 h-4" />
+          </button>
 
           {/* Theme Selector */}
           <ThemeToggle variant="navbar" />
@@ -126,14 +207,21 @@ export const Navbar: React.FC<NavbarProps> = () => {
           {/* User / Authentication */}
           {currentUser ? (
             <>
-              {/* Notification icon */}
-              <Link
-                to="/notifications"
-                className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 relative"
+              {/* Notification icon & interactive drawer trigger */}
+              <button
+                type="button"
+                onClick={() => setNotificationDrawerOpen(!notificationDrawerOpen)}
+                className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 relative transition-colors"
                 aria-label="Notifications"
+                title="Notifications"
               >
                 <Bell className="w-4 h-4" />
-              </Link>
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white leading-none shadow-xs">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
 
               {/* Profile Avatar & Dropdown */}
               <div className="relative" ref={profileRef}>
@@ -262,6 +350,24 @@ export const Navbar: React.FC<NavbarProps> = () => {
           )}
         </div>
       )}
+
+      {/* Quick Command Palette Modal */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
+
+      {/* Interactive Notification Drawer */}
+      <NotificationDrawer
+        isOpen={notificationDrawerOpen}
+        onClose={() => setNotificationDrawerOpen(false)}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        loading={notificationsLoading}
+        onMarkAllRead={handleMarkAllRead}
+        onMarkRead={handleMarkRead}
+        onDelete={handleDeleteNotification}
+      />
     </header>
   );
 };

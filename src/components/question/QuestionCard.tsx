@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MessageSquare,
@@ -8,7 +8,11 @@ import {
   MoreHorizontal,
   Flag,
   User,
-  EyeOff
+  EyeOff,
+  ChevronUp,
+  ChevronDown,
+  Sparkles,
+  CheckCircle
 } from 'lucide-react';
 import { Question } from '../../core/models/types';
 import { useAuth } from '../../core/context/AuthContext';
@@ -34,6 +38,51 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+
+  // Voting & Quality controls
+  const [voteCount, setVoteCount] = useState<number>(question.voteCount || 0);
+  const [userVote, setUserVote] = useState<1 | -1 | 0>(0);
+  const [votingLoading, setVotingLoading] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState((question.voteCount || 0) <= -3);
+
+  useEffect(() => {
+    if (currentUser) {
+      questionService.getUserVote(currentUser.uid, question.questionId).then(setUserVote);
+    }
+  }, [currentUser, question.questionId]);
+
+  const handleVote = async (e: React.MouseEvent, val: 1 | -1) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!currentUser || votingLoading) return;
+    setVotingLoading(true);
+
+    const oldVote = userVote;
+    const oldScore = voteCount;
+
+    let delta: number = val;
+    if (userVote === val) {
+      setUserVote(0);
+      delta = -val;
+    } else if (userVote !== 0) {
+      setUserVote(val);
+      delta = val * 2;
+    } else {
+      setUserVote(val);
+      delta = val;
+    }
+    setVoteCount((prev) => prev + delta);
+
+    try {
+      await questionService.voteQuestion(currentUser.uid, question.questionId, val);
+    } catch (err) {
+      console.error('Error voting on question:', err);
+      setUserVote(oldVote);
+      setVoteCount(oldScore);
+    } finally {
+      setVotingLoading(false);
+    }
+  };
 
   const handleSaveToggle = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -70,9 +119,29 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const isOwner = currentUser && question.authorUid === currentUser.uid;
 
+  if (voteCount <= -3 && isCollapsed) {
+    return (
+      <article className="p-3.5 bg-neutral-100/70 dark:bg-neutral-850/60 border border-neutral-200 dark:border-neutral-800 rounded-xl flex items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-neutral-500">
+          <EyeOff className="w-4 h-4 text-neutral-400 shrink-0" />
+          <span>Question collapsed due to low community score ({voteCount})</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(false)}
+          className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer shrink-0"
+        >
+          Show question
+        </button>
+      </article>
+    );
+  }
+
   return (
     <>
-      <article className="p-4 sm:p-5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors">
+      <article className={`p-4 sm:p-5 bg-white dark:bg-neutral-900 border rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors ${
+        voteCount >= 8 ? 'border-amber-200 dark:border-amber-800/80 shadow-xs' : 'border-neutral-200 dark:border-neutral-800'
+      }`}>
         
         {/* Unboxed Metadata Row with typographic separator */}
         <div className="flex items-center justify-between gap-2 text-xs text-neutral-500 dark:text-neutral-400 mb-2.5">
@@ -84,6 +153,19 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             >
               {question.categoryName || question.categoryId}
             </Link>
+
+            {Boolean(question.acceptedAnswerId || question.isSolved) && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+                <CheckCircle className="w-2.5 h-2.5 fill-emerald-600 text-white dark:text-neutral-900" /> Solved
+              </span>
+            )}
+
+            {voteCount >= 8 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
+                <Sparkles className="w-2.5 h-2.5" /> High Signal
+              </span>
+            )}
+
             <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
 
             {/* Author or Anonymous */}
@@ -188,7 +270,40 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
         {/* Action Row */}
         <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800/60 text-xs text-neutral-500 dark:text-neutral-400">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Question Voting Controls */}
+            <div className="flex items-center gap-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={(e) => handleVote(e, 1)}
+                disabled={!currentUser || votingLoading}
+                className={`p-1 rounded-md hover:bg-white dark:hover:bg-neutral-700 transition-colors cursor-pointer ${
+                  userVote === 1 ? 'text-emerald-600 font-bold bg-white dark:bg-neutral-700 shadow-xs' : 'text-neutral-500'
+                }`}
+                title="Upvote question"
+                aria-label="Upvote question"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <span className={`px-1 font-semibold tabular-nums text-xs ${
+                voteCount > 0 ? 'text-emerald-600 dark:text-emerald-400' : voteCount < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-900 dark:text-neutral-100'
+              }`}>
+                {voteCount}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => handleVote(e, -1)}
+                disabled={!currentUser || votingLoading}
+                className={`p-1 rounded-md hover:bg-white dark:hover:bg-neutral-700 transition-colors cursor-pointer ${
+                  userVote === -1 ? 'text-rose-600 font-bold bg-white dark:bg-neutral-700 shadow-xs' : 'text-neutral-500'
+                }`}
+                title="Downvote question"
+                aria-label="Downvote question"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             <Link
               to={`/question/${question.questionId}`}
               className="flex items-center gap-1.5 hover:text-neutral-950 dark:hover:text-white transition-colors"
